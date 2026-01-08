@@ -6,17 +6,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.4.0] 2026-01-08
+
+feat(p2p): phase 6.5 – secure envelopes with AEAD and session keys
+
+This commit completes Phase 6.5 of the P2P protocol by introducing
+authenticated encryption at the Envelope layer.
+
+Key changes:
+
+- Added AEAD support (encrypt + authenticate) using per-peer session keys.
+- Extended Envelope format with nonce (96-bit) and authentication tag (128-bit).
+- Derived and stored a 32-byte session key at the end of the handshake.
+- Enabled secure channels per peer with send-side nonce counters.
+- Implemented decrypt-before-dispatch logic in Node to transparently handle
+  encrypted payloads.
+- Kept handshake and control messages (Hello, Ping/Pong) in plaintext to
+  preserve backward compatibility and simplify bootstrapping.
+- Provided a NullCrypto AEAD implementation for development and testing.
+
+This lays the foundation for fully secure WAL / Outbox synchronization and
+future replay protection (Phase 6.6).
+
+## [0.3.0] - 2026-01-08
+
+This PR introduces Phase 5 of the P2P roadmap.
+
+- HTTP bootstrap registry (pull + optional announce)
+- Cooldown and exponential backoff
+- Safe async HTTP client (timeouts, size limits)
+- Integration with TcpNode lifecycle
+- Manual registry for local testing
+
+This enables peer discovery beyond LAN and prepares WAN scenarios.
+
 ## [0.2.0] - 2026-01-08
 
 ### Added
-- 
+
+-
 
 ### Changed
-- 
+
+-
 
 ### Removed
-- 
 
+-
 
 p2p: phase 4 LAN discovery via UDP (broadcast/multicast)
 
