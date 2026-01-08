@@ -6,17 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+p2p: phase 4 LAN discovery via UDP (broadcast/multicast)
+
+- Add UDP-based peer discovery (broadcast/multicast)
+- Introduce DiscoveryAnnounce message (lightweight JSON, size-limited)
+- Implement DiscoveryUdp with announce loop and receive loop
+- Add deduplication, TTL, and connect cooldown
+- Integrate discovery into TcpNode lifecycle
+- Reserve peer slot before async connect to prevent duplicate connects
+- Add tcp_connect_async failure callback for cleanup
+- Extend p2p_demo with discovery CLI options (--discovery, --disc-port, --disc-mode, --disc-interval, --no-connect)
+- Harden discovery against self-announces, spam, and invalid packets"
+
 ## [0.1.1] - 2026-01-08
 
 ### Added
-- 
+
+-
 
 ### Changed
-- 
+
+-
 
 ### Removed
-- 
 
+-
 
 p2p: hardening tcp transport and node lifecycle (timeouts, heartbeat, demo)
 
