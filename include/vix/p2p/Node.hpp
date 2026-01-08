@@ -3,9 +3,11 @@
 #include <unordered_map>
 #include <memory>
 #include <optional>
+
 #include "Peer.hpp"
 #include "Transport.hpp"
 #include "Discovery.hpp"
+#include "Bootstrap.hpp"
 #include "Router.hpp"
 #include "EdgeSync.hpp"
 #include "Crypto.hpp"
@@ -51,7 +53,10 @@ namespace vix::p2p
         virtual std::optional<Peer> get_peer(const PeerId &peer_id) const = 0;
         virtual std::unordered_map<PeerId, Peer> peers_snapshot() const = 0;
 
+        // Dependencies
         virtual void set_discovery(std::shared_ptr<Discovery> d) = 0;
+        virtual void set_bootstrap(std::shared_ptr<Bootstrap> b) = 0;
+
         virtual void set_router(std::shared_ptr<Router> r) = 0;
         virtual void set_edge_sync(std::shared_ptr<EdgeSync> s) = 0;
         virtual void set_crypto(std::shared_ptr<Crypto> c) = 0;
@@ -65,6 +70,7 @@ namespace vix::p2p
         explicit MemoryNode(NodeConfig cfg)
             : cfg_(std::move(cfg)),
               discovery_(std::make_shared<NullDiscovery>()),
+              bootstrap_(std::make_shared<NullBootstrap>()),
               router_(std::make_shared<MemoryRouter>()),
               edge_sync_(std::make_shared<NullEdgeSync>()),
               crypto_(std::make_shared<NullCrypto>()) {}
@@ -79,10 +85,12 @@ namespace vix::p2p
         bool connect(const PeerEndpoint &ep) override
         {
             PeerId pid = ep.host + ":" + std::to_string(ep.port);
+
             Peer p;
             p.id = pid;
             p.state = PeerState::Connecting;
             p.endpoint = ep;
+
             peers_[pid] = p;
             stats_.peers_total = peers_.size();
             return true;
@@ -92,9 +100,7 @@ namespace vix::p2p
         {
             auto it = peers_.find(peer_id);
             if (it != peers_.end())
-            {
                 it->second.state = PeerState::Closed;
-            }
         }
 
         std::optional<Peer> get_peer(const PeerId &peer_id) const override
@@ -111,6 +117,8 @@ namespace vix::p2p
         }
 
         void set_discovery(std::shared_ptr<Discovery> d) override { discovery_ = std::move(d); }
+        void set_bootstrap(std::shared_ptr<Bootstrap> b) override { bootstrap_ = std::move(b); }
+
         void set_router(std::shared_ptr<Router> r) override { router_ = std::move(r); }
         void set_edge_sync(std::shared_ptr<EdgeSync> s) override { edge_sync_ = std::move(s); }
         void set_crypto(std::shared_ptr<Crypto> c) override { crypto_ = std::move(c); }
@@ -134,6 +142,7 @@ namespace vix::p2p
         NodeStats stats_{};
 
         std::shared_ptr<Discovery> discovery_;
+        std::shared_ptr<Bootstrap> bootstrap_;
         std::shared_ptr<Router> router_;
         std::shared_ptr<EdgeSync> edge_sync_;
         std::shared_ptr<Crypto> crypto_;

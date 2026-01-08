@@ -23,6 +23,7 @@
 #include "vix/p2p/messages/Pong.hpp"
 
 #include "vix/p2p/transport/Tcp.hpp"
+#include "vix/p2p/Bootstrap.hpp"
 
 namespace vix::p2p
 {
@@ -64,6 +65,10 @@ namespace vix::p2p
             if (discovery_)
                 discovery_->start();
 
+            if (bootstrap_)
+                bootstrap_->start();
+            schedule_bootstrap_tick_();
+
             schedule_heartbeat_();
 
             io_thread_ = std::thread([this]()
@@ -95,6 +100,7 @@ namespace vix::p2p
 
                 transports_.clear();
                 peers_.clear();
+                bootstrap_last_connect_.clear();
             }
 
             for (auto &t : to_close)
@@ -102,6 +108,12 @@ namespace vix::p2p
 
             std::error_code ec;
             heartbeat_.cancel(ec);
+
+            if (bootstrap_)
+                bootstrap_->stop();
+
+            std::error_code ec2;
+            bootstrap_timer_.cancel(ec2);
 
             ioc_.stop();
             if (io_thread_.joinable())
@@ -256,6 +268,8 @@ namespace vix::p2p
             out.peers_connected = connected;
             return out;
         }
+
+        void set_bootstrap(std::shared_ptr<Bootstrap> b) override { bootstrap_ = std::move(b); }
 
     private:
         void do_accept()
@@ -523,6 +537,11 @@ namespace vix::p2p
 
         std::unordered_map<PeerId, Peer> peers_;
         std::unordered_map<PeerId, std::shared_ptr<Transport>> transports_;
+        std::shared_ptr<Bootstrap> bootstrap_{std::make_shared<NullBootstrap>()};
+        asio::steady_timer bootstrap_timer_{ioc_};
+        static constexpr auto kBootstrapEvery = std::chrono::seconds(5);
+        static constexpr auto kBootstrapConnectCooldown = std::chrono::seconds(12);
+        std::unordered_map<std::string, std::chrono::steady_clock::time_point> bootstrap_last_connect_;
 
         void rekey_peer_unlocked_(const PeerId &old_id, const PeerId &new_id)
         {
@@ -544,6 +563,157 @@ namespace vix::p2p
             p.id = new_id;
             peers_.emplace(new_id, std::move(p));
             transports_.emplace(new_id, std::move(t));
+        }
+
+        void schedule_bootstrap_tick_()
+        {
+            bootstrap_timer_.expires_after(kBootstrapEvery);
+            bootstrap_timer_.async_wait([this](const std::error_code &ec)
+                                        {
+            if (ec) return;
+            if (!running_) return;
+
+            if (bootstrap_)
+            {
+                const auto now = std::chrono::steady_clock::now();
+                auto seeds = bootstrap_->snapshot();
+
+                std::size_t attempts = 0;
+                for (const auto& s : seeds)
+                {
+                    if (s.tcp_port == 0)
+                        continue;
+
+                    if (!s.transport.empty() && s.transport != "tcp")
+                        continue;
+
+                    PeerEndpoint ep;
+                    ep.host = s.host;
+                    ep.port = s.tcp_port;
+                    ep.scheme = "tcp";
+
+                    if (cfg_.listen_port != 0 &&
+                        ep.port == cfg_.listen_port &&
+                        (ep.host == "127.0.0.1" || ep.host == "localhost"))
+                        continue;
+
+                    {
+                        std::scoped_lock lk(mu_);
+
+                        if (has_peer_by_endpoint_unlocked_(ep))
+                            continue;
+
+                        if (!bootstrap_cooldown_ok_unlocked_(ep, now))
+                            continue;
+
+                        mark_bootstrap_attempt_unlocked_(ep, now);
+                    }
+
+                    connect_from_bootstrap_(ep);
+                    attempts++;
+
+                    if (attempts >= 8)
+                        break;
+                }
+            }
+
+            schedule_bootstrap_tick_(); });
+        }
+
+        void connect_from_bootstrap_(const PeerEndpoint &ep)
+        {
+            const PeerId transient_id = ep.host + ":" + std::to_string(ep.port);
+
+            {
+                std::scoped_lock lk(mu_);
+                if (has_peer_by_endpoint_unlocked_(ep))
+                    return;
+
+                Peer p;
+                p.id = transient_id;
+                p.state = PeerState::Connecting;
+                p.endpoint = ep;
+                peers_[transient_id] = std::move(p);
+            }
+
+            EnvelopeHandler on_env = [this](const PeerId &peer_id, const Envelope &env)
+            {
+                on_envelope(peer_id, env);
+            };
+
+            TcpFailHandler on_fail = [this, transient_id](std::error_code)
+            {
+                std::scoped_lock lk(mu_);
+                auto it = peers_.find(transient_id);
+                if (it != peers_.end() && it->second.state == PeerState::Connecting)
+                    it->second.state = PeerState::Closed;
+            };
+
+            TcpReadyHandler on_ready =
+                [this, transient_id](PeerId peer_id, PeerEndpoint endpoint, std::shared_ptr<Transport> transport)
+            {
+                PeerId use_id = peer_id;
+
+                {
+                    std::scoped_lock lk(mu_);
+
+                    if (peer_id != transient_id)
+                    {
+                        auto pit = peers_.find(transient_id);
+                        if (pit != peers_.end())
+                        {
+                            Peer p = pit->second;
+                            peers_.erase(pit);
+
+                            p.id = peer_id;
+                            p.endpoint = endpoint;
+                            peers_[peer_id] = std::move(p);
+                        }
+                        else
+                        {
+                            Peer p;
+                            p.id = peer_id;
+                            p.state = PeerState::Connecting;
+                            p.endpoint = endpoint;
+                            peers_[peer_id] = std::move(p);
+                        }
+                    }
+                    else
+                    {
+                        auto it = peers_.find(transient_id);
+                        if (it != peers_.end())
+                            it->second.endpoint = endpoint;
+                    }
+
+                    transports_[use_id] = std::move(transport);
+                    stats_.handshakes_started++;
+                }
+
+                schedule_handshake_timeout_(use_id);
+                send_hello(use_id);
+            };
+
+            tcp_connect_async(ioc_, ep, std::move(on_env), std::move(on_ready), std::move(on_fail));
+        }
+
+        static std::string ep_key_(const PeerEndpoint &ep)
+        {
+            return ep.host + ":" + std::to_string(ep.port);
+        }
+
+        bool bootstrap_cooldown_ok_unlocked_(const PeerEndpoint &ep, std::chrono::steady_clock::time_point now)
+        {
+            const auto key = ep_key_(ep);
+            auto it = bootstrap_last_connect_.find(key);
+            if (it == bootstrap_last_connect_.end())
+                return true;
+
+            return (now - it->second) >= kBootstrapConnectCooldown;
+        }
+
+        void mark_bootstrap_attempt_unlocked_(const PeerEndpoint &ep, std::chrono::steady_clock::time_point now)
+        {
+            bootstrap_last_connect_[ep_key_(ep)] = now;
         }
     };
 
