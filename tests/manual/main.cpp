@@ -11,6 +11,7 @@
 #include "vix/p2p/P2P.hpp"
 #include "vix/p2p/Node.hpp"
 #include "vix/p2p/Peer.hpp"
+#include "vix/p2p/Bootstrap.hpp"
 
 static std::atomic<bool> g_running{true};
 
@@ -266,7 +267,75 @@ int main(int argc, char **argv)
         disc_interval_ms = (std::uint32_t)(*v * 1000ULL);
     }
 
+    bool bootstrap_on = false;
+    if (auto s = arg_value(argc, argv, "--bootstrap"))
+    {
+        if (*s == "on")
+            bootstrap_on = true;
+        else if (*s == "off")
+            bootstrap_on = false;
+        else
+        {
+            std::cerr << "Invalid --bootstrap (on|off)\n";
+            return 1;
+        }
+    }
+
+    std::string registry = "http://127.0.0.1:8080/p2p/v1";
+    if (auto s = arg_value(argc, argv, "--registry"))
+        registry = *s;
+
+    std::uint64_t boot_interval_sec = 15;
+    if (auto s = arg_value(argc, argv, "--boot-interval"))
+    {
+        auto v = parse_u64(*s);
+        if (!v || *v == 0)
+        {
+            std::cerr << "Invalid --boot-interval (seconds)\n";
+            return 1;
+        }
+        boot_interval_sec = *v;
+    }
+
+    bool announce_on = true;
+    if (auto s = arg_value(argc, argv, "--announce"))
+    {
+        if (*s == "on")
+            announce_on = true;
+        else if (*s == "off")
+            announce_on = false;
+        else
+        {
+            std::cerr << "Invalid --announce (on|off)\n";
+            return 1;
+        }
+    }
+
     const bool no_connect = has_flag(argc, argv, "--no-connect");
+
+    if (bootstrap_on)
+    {
+        vix::p2p::BootstrapConfig bc;
+        bc.self_node_id = cfg.node_id;
+        bc.self_tcp_port = cfg.listen_port;
+        bc.registry_url = registry;
+        bc.poll_interval_ms = (std::uint32_t)(boot_interval_sec * 1000ULL);
+        bc.mode = announce_on ? vix::p2p::BootstrapMode::PullAndAnnounce
+                              : vix::p2p::BootstrapMode::PullOnly;
+
+        auto boot = vix::p2p::make_http_bootstrap(bc, [node, no_connect](const vix::p2p::BootstrapPeer &p)
+                                                  {
+        if (no_connect) return;
+
+        vix::p2p::PeerEndpoint ep;
+        ep.host = p.host;
+        ep.port = p.tcp_port;
+        ep.scheme = "tcp";
+
+        node->connect(ep); });
+
+        node->set_bootstrap(boot);
+    }
 
     // inject discovery
     if (discovery_on)
