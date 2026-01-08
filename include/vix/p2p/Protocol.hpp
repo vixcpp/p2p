@@ -4,7 +4,6 @@
 
 namespace vix::p2p
 {
-
     struct ProtocolVersion
     {
         std::uint16_t major{1};
@@ -22,10 +21,14 @@ namespace vix::p2p
     {
         Unknown = 0,
 
-        Hello = 1,
+        // Handshake v2
+        Hello = 1, // HelloInit
         Ping = 2,
         Pong = 3,
+        HelloAck = 4,    // B -> A
+        HelloFinish = 5, // A -> B
 
+        // Sync
         WalPush = 10,
         WalAck = 11,
         OutboxPull = 12,
@@ -37,6 +40,10 @@ namespace vix::p2p
         {
         case MessageType::Hello:
             return "Hello";
+        case MessageType::HelloAck:
+            return "HelloAck";
+        case MessageType::HelloFinish:
+            return "HelloFinish";
         case MessageType::Ping:
             return "Ping";
         case MessageType::Pong:
@@ -51,5 +58,4 @@ namespace vix::p2p
             return "Unknown";
         }
     }
-
 } // namespace vix::p2p

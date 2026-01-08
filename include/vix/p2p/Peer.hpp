@@ -4,6 +4,7 @@
 #include <chrono>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 namespace vix::p2p
 {
@@ -29,9 +30,36 @@ namespace vix::p2p
 
     struct PeerMetadata
     {
-        // Capabilities = map simple pour figer le contrat
         std::unordered_map<std::string, std::string> capabilities;
         std::chrono::steady_clock::time_point last_seen{};
+
+        std::vector<std::uint8_t> public_key;
+
+        // secure channel state
+        bool secure{false};
+        std::vector<std::uint8_t> session_key_32; // 32 bytes
+        std::uint64_t send_nonce_counter{1};      // start at 1
+    };
+
+    struct HandshakeState
+    {
+        enum class Stage
+        {
+            None,
+            HelloSent,
+            HelloReceived,
+            AckSent,
+            AckReceived,
+            Finished
+        };
+
+        Stage stage{Stage::None};
+
+        std::uint64_t nonce_a{0};
+        std::uint64_t nonce_b{0};
+        std::uint64_t ts_ms{0};
+
+        std::chrono::steady_clock::time_point started_at{};
     };
 
     struct Peer
@@ -40,6 +68,7 @@ namespace vix::p2p
         PeerState state{PeerState::Disconnected};
         std::optional<PeerEndpoint> endpoint;
         PeerMetadata meta;
+        std::optional<HandshakeState> handshake;
 
         bool is_connected() const { return state == PeerState::Connected; }
     };
