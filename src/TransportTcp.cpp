@@ -30,6 +30,11 @@ namespace vix::p2p
         std::vector<std::uint8_t> pending;
         std::deque<std::vector<std::uint8_t>> write_q;
 
+        static constexpr std::size_t kMaxQueuedFrames = 256;
+        static constexpr std::size_t kMaxQueuedBytes = 4 * 1024 * 1024; // 4MB
+        std::size_t queued_bytes{0};
+        std::atomic<bool> closed{false};
+
         EnvelopeHandler on_envelope;
 
         explicit TcpSession(tcp::socket s)
@@ -39,6 +44,8 @@ namespace vix::p2p
 
         void close()
         {
+            if (closed.exchange(true))
+                return; // idempotent
             asio::error_code ec;
             socket.shutdown(tcp::socket::shutdown_both, ec);
             socket.close(ec);
@@ -46,10 +53,22 @@ namespace vix::p2p
 
         void send_frame(std::span<const std::uint8_t> payload)
         {
+            if (closed.load())
+                return;
+
             auto frame = framer.encode(payload);
+
+            // backpressure
+            if (write_q.size() >= kMaxQueuedFrames || (queued_bytes + frame.bytes.size()) > kMaxQueuedBytes)
+            {
+                close();
+                return;
+            }
+
             stats.frames_sent++;
             stats.bytes_sent += frame.bytes.size();
 
+            queued_bytes += frame.bytes.size();
             bool in_progress = !write_q.empty();
             write_q.push_back(std::move(frame.bytes));
             if (!in_progress)
@@ -65,17 +84,27 @@ namespace vix::p2p
         void do_write()
         {
             auto self = shared_from_this();
+
+            const std::size_t sent_size = write_q.front().size();
+
             asio::async_write(
                 socket,
                 asio::buffer(write_q.front()),
-                [self](std::error_code ec, std::size_t)
+                [self, sent_size](std::error_code ec, std::size_t /*n*/)
                 {
                     if (ec)
                     {
                         self->close();
                         return;
                     }
+
                     self->write_q.pop_front();
+
+                    if (self->queued_bytes >= sent_size)
+                        self->queued_bytes -= sent_size;
+                    else
+                        self->queued_bytes = 0;
+
                     if (!self->write_q.empty())
                         self->do_write();
                 });
@@ -83,6 +112,8 @@ namespace vix::p2p
 
         void do_read()
         {
+            if (closed.load())
+                return;
             auto self = shared_from_this();
             socket.async_read_some(
                 asio::buffer(read_chunk),
@@ -93,6 +124,8 @@ namespace vix::p2p
                         self->close();
                         return;
                     }
+                    if (self->closed.load())
+                        return;
 
                     self->stats.bytes_received += n;
                     self->pending.insert(self->pending.end(),
@@ -157,8 +190,6 @@ namespace vix::p2p
     private:
         std::shared_ptr<TcpSession> s_;
     };
-
-    // ---- Public API ----
 
     static PeerId make_peer_id(const std::string &host, std::uint16_t port)
     {

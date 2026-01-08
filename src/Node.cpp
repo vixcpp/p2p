@@ -4,6 +4,8 @@
 #include <memory>
 #include <mutex>
 #include <iostream>
+#include <chrono>
+#include <vector>
 
 #include "vix/p2p/Node.hpp"
 #include "vix/p2p/Peer.hpp"
@@ -62,6 +64,8 @@ namespace vix::p2p
             if (discovery_)
                 discovery_->start();
 
+            schedule_heartbeat_();
+
             io_thread_ = std::thread([this]()
                                      { ioc_.run(); });
         }
@@ -81,16 +85,23 @@ namespace vix::p2p
                 acceptor_->close(ec);
             }
 
+            std::vector<std::shared_ptr<Transport>> to_close;
+
             {
                 std::scoped_lock lk(mu_);
                 for (auto &[_, t] : transports_)
-                {
                     if (t)
-                        t->close();
-                }
+                        to_close.push_back(t);
+
                 transports_.clear();
                 peers_.clear();
             }
+
+            for (auto &t : to_close)
+                t->close();
+
+            std::error_code ec;
+            heartbeat_.cancel(ec);
 
             ioc_.stop();
             if (io_thread_.joinable())
@@ -123,6 +134,7 @@ namespace vix::p2p
           stats_.handshakes_started++;
         }
 
+        schedule_handshake_timeout_(peer_id);
         send_hello(peer_id);
       };
 
@@ -226,13 +238,87 @@ namespace vix::p2p
                 stats_.handshakes_started++;
             }
 
+            schedule_handshake_timeout_(pid);
             send_hello(pid);
+        }
+
+        void schedule_heartbeat_()
+        {
+            heartbeat_.expires_after(kPingEvery);
+            heartbeat_.async_wait([this](const std::error_code &ec)
+                                  {
+            if (ec) return;
+            if (!running_) return;
+
+            const auto now = std::chrono::steady_clock::now();
+
+            std::vector<PeerId> to_ping;
+            std::vector<PeerId> to_drop;
+
+            {
+                std::scoped_lock lk(mu_);
+                for (auto &[id, p] : peers_)
+                {
+                    // stale detect (only if we ever saw activity)
+                    if (p.meta.last_seen.time_since_epoch().count() != 0 &&
+                        (now - p.meta.last_seen) > kStaleAfter)
+                    {
+                        to_drop.push_back(id);
+                        continue;
+                    }
+
+                    if (p.state == PeerState::Connected)
+                        to_ping.push_back(id);
+                }
+            }
+
+            // ping outside lock
+            const std::uint64_t nonce =
+                static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            now.time_since_epoch())
+                                            .count());
+
+            for (auto &id : to_ping)
+                send_ping(id, nonce);
+
+            for (auto &id : to_drop)
+                disconnect(id);
+
+            schedule_heartbeat_(); });
+        }
+
+        void schedule_handshake_timeout_(PeerId id)
+        {
+            auto t = std::make_shared<asio::steady_timer>(ioc_);
+            t->expires_after(kHsTimeout);
+
+            t->async_wait([this, id, t](const std::error_code &ec)
+                          {
+            if (ec) return;
+            if (!running_) return;
+
+            bool drop = false;
+            {
+                std::scoped_lock lk(mu_);
+                auto it = peers_.find(id);
+                if (it == peers_.end()) return;
+
+                // still not connected => drop
+                if (it->second.state != PeerState::Connected)
+                    drop = true;
+            }
+
+            if (drop)
+                disconnect(id); });
         }
 
         void on_envelope(const PeerId &peer_id, const Envelope &env)
         {
             try
             {
+                if (!running_)
+                    return;
+
                 auto any = msg::decode_payload_or_throw(env.type, env.payload);
 
                 if (std::holds_alternative<msg::Hello>(any))
@@ -350,6 +436,12 @@ namespace vix::p2p
         NodeStats stats_{};
 
         asio::io_context ioc_;
+        asio::steady_timer heartbeat_{ioc_};
+
+        static constexpr auto kPingEvery = std::chrono::seconds(5);
+        static constexpr auto kStaleAfter = std::chrono::seconds(15);
+        static constexpr auto kHsTimeout = std::chrono::seconds(5);
+
         std::optional<tcp::acceptor> acceptor_;
         std::thread io_thread_;
 
