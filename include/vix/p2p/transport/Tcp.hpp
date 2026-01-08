@@ -26,4 +26,13 @@ namespace vix::p2p
         EnvelopeHandler on_envelope,
         TcpReadyHandler on_ready);
 
+    using TcpFailHandler = std::function<void(std::error_code)>;
+
+    void tcp_connect_async(
+        asio::io_context &ioc,
+        const PeerEndpoint &ep,
+        EnvelopeHandler on_envelope,
+        TcpReadyHandler on_ready,
+        TcpFailHandler on_fail);
+
 } // namespace vix::p2p

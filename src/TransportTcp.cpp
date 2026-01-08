@@ -222,7 +222,8 @@ namespace vix::p2p
         asio::io_context &ioc,
         const PeerEndpoint &ep,
         EnvelopeHandler on_envelope,
-        TcpReadyHandler on_ready)
+        TcpReadyHandler on_ready,
+        TcpFailHandler on_fail)
     {
         tcp::resolver resolver(ioc);
         auto results = resolver.resolve(ep.host, std::to_string(ep.port));
@@ -232,10 +233,15 @@ namespace vix::p2p
         asio::async_connect(
             *sock, results,
             [sock, on_envelope = std::move(on_envelope),
-             on_ready = std::move(on_ready)](std::error_code ec, const tcp::endpoint &remote) mutable
+             on_ready = std::move(on_ready),
+             on_fail = std::move(on_fail)](std::error_code ec, const tcp::endpoint &remote) mutable
             {
                 if (ec)
+                {
+                    if (on_fail)
+                        on_fail(ec);
                     return;
+                }
 
                 const std::string host = remote.address().to_string();
                 const std::uint16_t port = remote.port();
