@@ -214,6 +214,84 @@ int main(int argc, char **argv)
                   << " listen=" << cfg.listen_port << "\n";
     }
 
+    bool discovery_on = true;
+    if (auto s = arg_value(argc, argv, "--discovery"))
+    {
+        if (*s == "on")
+            discovery_on = true;
+        else if (*s == "off")
+            discovery_on = false;
+        else
+        {
+            std::cerr << "Invalid --discovery (on|off)\n";
+            return 1;
+        }
+    }
+
+    std::uint16_t disc_port = 37020;
+    if (auto s = arg_value(argc, argv, "--disc-port"))
+    {
+        auto v = parse_u16(*s);
+        if (!v)
+        {
+            std::cerr << "Invalid --disc-port\n";
+            return 1;
+        }
+        disc_port = *v;
+    }
+
+    vix::p2p::DiscoveryMode disc_mode = vix::p2p::DiscoveryMode::Broadcast;
+    if (auto s = arg_value(argc, argv, "--disc-mode"))
+    {
+        if (*s == "broadcast")
+            disc_mode = vix::p2p::DiscoveryMode::Broadcast;
+        else if (*s == "multicast")
+            disc_mode = vix::p2p::DiscoveryMode::Multicast;
+        else
+        {
+            std::cerr << "Invalid --disc-mode (broadcast|multicast)\n";
+            return 1;
+        }
+    }
+
+    std::uint32_t disc_interval_ms = 2000;
+    if (auto s = arg_value(argc, argv, "--disc-interval"))
+    {
+        auto v = parse_u64(*s);
+        if (!v || *v == 0)
+        {
+            std::cerr << "Invalid --disc-interval\n";
+            return 1;
+        }
+        disc_interval_ms = (std::uint32_t)(*v * 1000ULL);
+    }
+
+    const bool no_connect = has_flag(argc, argv, "--no-connect");
+
+    // inject discovery
+    if (discovery_on)
+    {
+        vix::p2p::DiscoveryConfig dc;
+        dc.self_node_id = cfg.node_id;
+        dc.self_tcp_port = cfg.listen_port;
+        dc.discovery_port = disc_port;
+        dc.mode = disc_mode;
+        dc.announce_interval_ms = disc_interval_ms;
+
+        auto disc = vix::p2p::make_udp_discovery(dc, [node, no_connect](const vix::p2p::DiscoveryAnnouncement &a)
+                                                 {
+        if (no_connect) return;
+
+        vix::p2p::PeerEndpoint ep;
+        ep.host = a.host;
+        ep.port = a.port;
+        ep.scheme = "tcp";
+
+        node->connect(ep); });
+
+        node->set_discovery(disc);
+    }
+
     p2p.start();
 
     // Optional outbound connect

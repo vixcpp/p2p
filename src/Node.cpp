@@ -117,52 +117,108 @@ namespace vix::p2p
 
             asio::post(ioc_, [this, ep]()
                        {
-      EnvelopeHandler on_env = [this](const PeerId& peer_id, const Envelope& env) {
-        on_envelope(peer_id, env);
-      };
+            const PeerId transient_id = ep.host + ":" + std::to_string(ep.port);
 
-      TcpReadyHandler on_ready = [this](PeerId peer_id, PeerEndpoint endpoint, std::shared_ptr<Transport> transport) {
-        {
-          std::scoped_lock lk(mu_);
-          Peer p;
-          p.id = peer_id;
-          p.state = PeerState::Connecting;
-          p.endpoint = endpoint;
-          peers_[peer_id] = p;
+            {
+                std::scoped_lock lk(mu_);
+                if (has_peer_by_endpoint_unlocked_(ep))
+                    return;
 
-          transports_[peer_id] = std::move(transport);
-          stats_.handshakes_started++;
-        }
+                Peer p;
+                p.id = transient_id;
+                p.state = PeerState::Connecting;
+                p.endpoint = ep;
+                peers_[transient_id] = std::move(p);
+            }
 
-        schedule_handshake_timeout_(peer_id);
-        send_hello(peer_id);
-      };
+            EnvelopeHandler on_env = [this](const PeerId &peer_id, const Envelope &env)
+            {
+                on_envelope(peer_id, env);
+            };
 
-      tcp_connect_async(ioc_, ep, std::move(on_env), std::move(on_ready)); });
+            TcpFailHandler on_fail = [this, transient_id](std::error_code)
+            {
+                std::scoped_lock lk(mu_);
+                auto it = peers_.find(transient_id);
+                if (it != peers_.end() && it->second.state == PeerState::Connecting)
+                    it->second.state = PeerState::Closed;
+            };
+
+            TcpReadyHandler on_ready =
+                [this, transient_id](PeerId peer_id, PeerEndpoint endpoint, std::shared_ptr<Transport> transport)
+            {
+                PeerId use_id = peer_id;
+
+                {
+                    std::scoped_lock lk(mu_);
+
+                    if (peer_id != transient_id)
+                    {
+                        auto pit = peers_.find(transient_id);
+                        if (pit != peers_.end())
+                        {
+                            Peer p = pit->second;
+                            peers_.erase(pit);
+
+                            p.id = peer_id;
+                            p.endpoint = endpoint;
+                            peers_[peer_id] = std::move(p);
+                        }
+                        else
+                        {
+                            Peer p;
+                            p.id = peer_id;
+                            p.state = PeerState::Connecting;
+                            p.endpoint = endpoint;
+                            peers_[peer_id] = std::move(p);
+                        }
+                    }
+                    else
+                    {
+                        auto it = peers_.find(transient_id);
+                        if (it != peers_.end() && it->second.endpoint)
+                            it->second.endpoint = endpoint;
+                    }
+
+                    transports_[use_id] = std::move(transport);
+                    stats_.handshakes_started++;
+                }
+
+                schedule_handshake_timeout_(use_id);
+                send_hello(use_id);
+            };
+
+            tcp_connect_async(ioc_, ep, std::move(on_env), std::move(on_ready), std::move(on_fail)); });
 
             return true;
         }
 
         void disconnect(const PeerId &peer_id) override
         {
-            asio::post(ioc_, [this, peer_id]()
-                       {
-      std::shared_ptr<Transport> t;
-      {
-        std::scoped_lock lk(mu_);
-        auto it = transports_.find(peer_id);
-        if (it == transports_.end()) return;
-        t = it->second;
-      }
+            asio::post(
+                ioc_,
+                [this, peer_id]()
+                {
+                    std::shared_ptr<Transport> t;
+                    {
+                        std::scoped_lock lk(mu_);
+                        auto it = transports_.find(peer_id);
+                        if (it == transports_.end())
+                            return;
+                        t = it->second;
+                    }
 
-      if (t) t->close();
+                    if (t)
+                        t->close();
 
-      {
-        std::scoped_lock lk(mu_);
-        transports_.erase(peer_id);
-        auto pit = peers_.find(peer_id);
-        if (pit != peers_.end()) pit->second.state = PeerState::Closed;
-      } });
+                    {
+                        std::scoped_lock lk(mu_);
+                        transports_.erase(peer_id);
+                        auto pit = peers_.find(peer_id);
+                        if (pit != peers_.end())
+                            pit->second.state = PeerState::Closed;
+                    }
+                });
         }
 
         std::optional<Peer> get_peer(const PeerId &peer_id) const override
@@ -240,6 +296,26 @@ namespace vix::p2p
 
             schedule_handshake_timeout_(pid);
             send_hello(pid);
+        }
+
+        bool has_peer_by_endpoint_unlocked_(const PeerEndpoint &ep) const
+        {
+            const PeerId transient = ep.host + ":" + std::to_string(ep.port);
+
+            // déjà connu via id transient
+            if (peers_.find(transient) != peers_.end())
+                return true;
+
+            // déjà connu via endpoint (cas rekey stable_id)
+            for (const auto &[id, p] : peers_)
+            {
+                if (!p.endpoint)
+                    continue;
+                if (p.endpoint->host == ep.host && p.endpoint->port == ep.port)
+                    return true;
+            }
+
+            return false;
         }
 
         void schedule_heartbeat_()
