@@ -1,7 +1,5 @@
-# registry.py
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json, time
-
 PEERS = {}  # node_id -> {host,tcp_port,ts}
 
 class H(BaseHTTPRequestHandler):
