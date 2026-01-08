@@ -49,6 +49,8 @@ modules/p2p/
 The **real executable demo** lives here after build:
 
 ```bash
+cmake -S . -B build -DVIX_P2P_BUILD_TESTS=ON
+cmake --build build -j
 build/tests/p2p_demo
 ```
 
