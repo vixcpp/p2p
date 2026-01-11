@@ -558,21 +558,50 @@ namespace vix::p2p
                 if (!running_)
                     return;
 
-                std::vector<std::uint8_t> plain;
+                std::vector<std::uint8_t> plaintext;
 
                 if (has_flag(env.flags, EnvelopeFlag::Encrypted))
                 {
-                    std::scoped_lock lk(mu_);
-                    plain = decrypt_payload_unlocked_(peer_id, env);
+                    std::vector<std::uint8_t> key32;
+                    bool secure = false;
+                    std::uint64_t ctr = 0;
+
+                    {
+                        std::scoped_lock lk(mu_);
+                        auto itP = peers_.find(peer_id);
+                        if (itP == peers_.end())
+                            throw std::runtime_error("unknown peer");
+
+                        secure = itP->second.meta.secure;
+                        key32 = itP->second.meta.session_key_32;
+
+                        if (!secure || key32.size() != 32)
+                            throw std::runtime_error("missing session key");
+
+                        ctr = nonce_counter_from_12_(env.nonce);
+
+                        if (!accept_recv_nonce_unlocked_(itP->second.meta, ctr))
+                            throw std::runtime_error("replay (nonce counter)");
+                    }
+
+                    auto aad = pack::make_aad(env);
+
+                    plaintext = crypto_->aead_decrypt(
+                        key32,
+                        std::span<const std::uint8_t>(env.nonce.data(), env.nonce.size()),
+                        aad,
+                        env.payload,
+                        std::span<const std::uint8_t>(env.tag.data(), env.tag.size()));
+
+                    if (plaintext.empty())
+                        throw std::runtime_error("aead auth failed");
                 }
                 else
                 {
-                    plain = env.payload;
+                    plaintext = env.payload;
                 }
 
-                auto any = msg::decode_payload_or_throw(
-                    env.type,
-                    std::span<const std::uint8_t>(plain.data(), plain.size()));
+                auto any = msg::decode_payload_or_throw(env.type, plaintext);
 
                 if (std::holds_alternative<msg::Hello>(any))
                 {
@@ -589,7 +618,6 @@ namespace vix::p2p
                     on_hello_finish(peer_id, std::get<msg::HelloFinish>(any));
                     return;
                 }
-
                 if (std::holds_alternative<msg::Ping>(any))
                 {
                     on_ping(peer_id, std::get<msg::Ping>(any));
@@ -598,22 +626,6 @@ namespace vix::p2p
                 if (std::holds_alternative<msg::Pong>(any))
                 {
                     on_pong(peer_id, std::get<msg::Pong>(any));
-                    return;
-                }
-
-                if (std::holds_alternative<msg::WalPush>(any))
-                {
-                    // TODO: on_wal_push(peer_id, std::get<msg::WalPush>(any));
-                    return;
-                }
-                if (std::holds_alternative<msg::WalAck>(any))
-                {
-                    // TODO: on_wal_ack(peer_id, std::get<msg::WalAck>(any));
-                    return;
-                }
-                if (std::holds_alternative<msg::OutboxPull>(any))
-                {
-                    // TODO: on_outbox_pull(peer_id, std::get<msg::OutboxPull>(any));
                     return;
                 }
             }
@@ -1127,6 +1139,60 @@ namespace vix::p2p
                 throw std::runtime_error("decrypt: auth failed");
 
             return pt;
+        }
+
+        static std::uint64_t nonce_counter_from_12_(const std::array<std::uint8_t, 12> &nonce)
+        {
+            // nonce12 = [u64 counter LE] + [u32 zeros]
+            std::uint64_t ctr = 0;
+            for (int i = 0; i < 8; ++i)
+                ctr |= (std::uint64_t)nonce[i] << (8 * i);
+            return ctr;
+        }
+
+        // Sliding window of 64 counters
+        static bool accept_recv_nonce_unlocked_(PeerMetadata &m, std::uint64_t ctr)
+        {
+            constexpr std::uint64_t kWindow = 64;
+
+            // First packet initializes max
+            if (m.recv_nonce_max == 0)
+            {
+                m.recv_nonce_max = ctr;
+                m.recv_nonce_window = 1ULL; // mark "max" seen
+                return true;
+            }
+
+            if (ctr > m.recv_nonce_max)
+            {
+                const std::uint64_t shift = ctr - m.recv_nonce_max;
+
+                if (shift >= kWindow)
+                {
+                    // too far ahead => reset window
+                    m.recv_nonce_window = 1ULL;
+                }
+                else
+                {
+                    m.recv_nonce_window <<= shift;
+                    m.recv_nonce_window |= 1ULL; // mark newest
+                }
+
+                m.recv_nonce_max = ctr;
+                return true;
+            }
+
+            // ctr <= max : check within window
+            const std::uint64_t diff = m.recv_nonce_max - ctr;
+            if (diff >= kWindow)
+                return false; // too old
+
+            const std::uint64_t bit = 1ULL << diff;
+            if (m.recv_nonce_window & bit)
+                return false; // replay
+
+            m.recv_nonce_window |= bit;
+            return true;
         }
     };
 

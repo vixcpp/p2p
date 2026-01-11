@@ -1,17 +1,19 @@
-#pragma once
+#ifndef DISPATCH_HPP
+#define DISPATCH_HPP
+
 #include <variant>
 #include <span>
 
-#include "../Protocol.hpp"
-#include "Envelope.hpp"
-#include "Hello.hpp"
-#include "HelloAck.hpp"
-#include "HelloFinish.hpp"
-#include "Ping.hpp"
-#include "Pong.hpp"
-#include "WalPush.hpp"
-#include "WalAck.hpp"
-#include "OutboxPull.hpp"
+#include <vix/p2p/Protocol.hpp>
+#include <vix/p2p/messages/Envelope.hpp>
+#include <vix/p2p/messages/Hello.hpp>
+#include <vix/p2p/messages/HelloAck.hpp>
+#include <vix/p2p/messages/HelloFinish.hpp>
+#include <vix/p2p/messages/Ping.hpp>
+#include <vix/p2p/messages/Pong.hpp>
+#include <vix/p2p/messages/WalPush.hpp>
+#include <vix/p2p/messages/WalAck.hpp>
+#include <vix/p2p/messages/OutboxPull.hpp>
 
 namespace vix::p2p::msg
 {
@@ -54,3 +56,5 @@ namespace vix::p2p::msg
         throw bin::Error("Dispatch: unknown message type");
     }
 } // namespace vix::p2p::msg
+
+#endif

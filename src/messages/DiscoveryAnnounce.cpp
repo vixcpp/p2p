@@ -1,4 +1,4 @@
-#include "vix/p2p/messages/DiscoveryAnnounce.hpp"
+#include <vix/p2p/messages/DiscoveryAnnounce.hpp>
 #include <sstream>
 #include <cctype>
 

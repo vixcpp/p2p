@@ -1,7 +1,9 @@
-#pragma once
+#ifndef PING_HPP
+#define PING_HPP
+
 #include <cstdint>
 #include <span>
-#include "Binary.hpp"
+#include <vix/p2p/messages/Binary.hpp>
 
 namespace vix::p2p::msg
 {
@@ -29,3 +31,5 @@ namespace vix::p2p::msg
     };
 
 } // namespace vix::p2p::msg
+
+#endif

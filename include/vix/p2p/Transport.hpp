@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TRANSPORT_HPP
+#define TRANSPORT_HPP
+
 #include <cstdint>
 #include <span>
 #include <string>
@@ -33,3 +35,5 @@ namespace vix::p2p
     };
 
 } // namespace vix::p2p
+
+#endif

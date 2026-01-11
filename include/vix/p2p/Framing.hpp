@@ -1,4 +1,6 @@
-#pragma once
+#ifndef FRAMING_HPP
+#define FRAMING_HPP
+
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -28,3 +30,5 @@ namespace vix::p2p
     };
 
 } // namespace vix::p2p
+
+#endif

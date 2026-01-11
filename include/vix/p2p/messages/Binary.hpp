@@ -1,4 +1,6 @@
-#pragma once
+#ifndef BINARY_HPP
+#define BINARY_HPP
+
 #include <cstdint>
 #include <span>
 #include <string>
@@ -169,3 +171,5 @@ namespace vix::p2p::bin
     };
 
 } // namespace vix::p2p::bin
+
+#endif

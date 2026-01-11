@@ -4,14 +4,14 @@
 #include <vector>
 #include <string>
 
-#include "vix/p2p/Transport.hpp"
-#include "vix/p2p/Peer.hpp"
+#include <vix/p2p/Transport.hpp>
+#include <vix/p2p/Peer.hpp>
 
-#include "vix/p2p/messages/Envelope.hpp"
-#include "vix/p2p/messages/Dispatch.hpp"
-#include "vix/p2p/framing/LengthPrefixVarint.hpp"
+#include <vix/p2p/messages/Envelope.hpp>
+#include <vix/p2p/messages/Dispatch.hpp>
+#include <vix/p2p/framing/LengthPrefixVarint.hpp>
 
-#include "vix/p2p/transport/Tcp.hpp"
+#include <vix/p2p/transport/Tcp.hpp>
 
 namespace vix::p2p
 {

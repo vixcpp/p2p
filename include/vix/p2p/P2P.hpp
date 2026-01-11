@@ -1,4 +1,6 @@
-#pragma once
+#ifndef P2P_HPP
+#define P2P_HPP
+
 #include <memory>
 #include <optional>
 #include "Node.hpp"
@@ -52,3 +54,5 @@ namespace vix::p2p
     };
 
 } // namespace vix::p2p
+
+#endif

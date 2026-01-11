@@ -1,4 +1,6 @@
-#pragma once
+#ifndef ROUTER_HPP
+#define ROUTER_HPP
+
 #include <string>
 #include <unordered_map>
 #include <optional>
@@ -13,7 +15,7 @@ namespace vix::p2p
     {
         std::string next_hop;
         bool via_relay{false};
-        std::uint8_t ttl{8}; // Phase 7: TTL store-and-forward
+        std::uint8_t ttl{8};
     };
 
     class Router
@@ -53,3 +55,5 @@ namespace vix::p2p
     };
 
 } // namespace vix::p2p
+
+#endif

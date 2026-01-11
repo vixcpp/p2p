@@ -1,4 +1,6 @@
-#pragma once
+#ifndef ENVELOPE_HPP
+#define ENVELOPE_HPP
+
 #include <cstdint>
 #include <vector>
 #include <span>
@@ -7,8 +9,8 @@
 #include <array>
 #include <algorithm>
 
-#include "../Protocol.hpp"
-#include "Binary.hpp"
+#include <vix/p2p/Protocol.hpp>
+#include <vix/p2p/messages/Binary.hpp>
 
 namespace vix::p2p
 {
@@ -114,3 +116,5 @@ namespace vix::p2p
     };
 
 } // namespace vix::p2p
+
+#endif

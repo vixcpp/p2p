@@ -1,11 +1,13 @@
-#pragma once
+#ifndef TCP_HPP
+#define TCP_HPP
+
 #include <asio.hpp>
 #include <memory>
 #include <functional>
 
-#include "../Transport.hpp"
-#include "../Peer.hpp"
-#include "../messages/Envelope.hpp"
+#include <vix/p2p/Transport.hpp>
+#include <vix/p2p/Peer.hpp>
+#include <vix/p2p/messages/Envelope.hpp>
 
 namespace vix::p2p
 {
@@ -36,3 +38,5 @@ namespace vix::p2p
         TcpFailHandler on_fail);
 
 } // namespace vix::p2p
+
+#endif

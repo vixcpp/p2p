@@ -1,4 +1,6 @@
-#pragma once
+#ifndef DISCOVERY_ANNOUNCE_HP
+#define DISCOVERY_ANNOUNCE_HP
+
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -23,3 +25,5 @@ namespace vix::p2p::msg
     };
 
 } // namespace vix::p2p::msg
+
+#endif
