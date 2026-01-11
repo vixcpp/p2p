@@ -1,12 +1,14 @@
-#pragma once
+#ifndef PACK_HPP
+#define PACK_HPP
+
 #include <cstdint>
 #include <vector>
 #include <span>
 #include <array>
 
-#include "../Protocol.hpp"
-#include "Envelope.hpp"
-#include "../Crypto.hpp"
+#include <vix/p2p/Protocol.hpp>
+#include <vix/p2p/messages/Envelope.hpp>
+#include <vix/p2p/Crypto.hpp>
 
 namespace vix::p2p::pack
 {
@@ -16,7 +18,7 @@ namespace vix::p2p::pack
         return g++;
     }
 
-    // AAD = version + type + msg_id + flags (sans nonce/tag/payload)
+    // AAD = version + type + msg_id + flags (nonce/tag/payload)
     inline std::vector<std::uint8_t> make_aad(const Envelope &e)
     {
         std::vector<std::uint8_t> aad;
@@ -95,3 +97,5 @@ namespace vix::p2p::pack
     }
 
 } // namespace vix::p2p::pack
+
+#endif

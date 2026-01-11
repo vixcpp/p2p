@@ -1,8 +1,10 @@
-#pragma once
+#ifndef WAL_PUSH_HPP
+#define WAL_PUSH_HPP
+
 #include <cstdint>
 #include <vector>
 #include <span>
-#include "Binary.hpp"
+#include <vix/p2p/messages/Binary.hpp>
 
 namespace vix::p2p::msg
 {
@@ -36,3 +38,5 @@ namespace vix::p2p::msg
     };
 
 } // namespace vix::p2p::msg
+
+#endif

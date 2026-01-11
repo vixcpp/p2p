@@ -1,4 +1,6 @@
-#pragma once
+#ifndef CRYPTO_HPP
+#define CRYPTO_HPP
+
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -6,7 +8,6 @@
 
 namespace vix::p2p
 {
-
     struct KeyPair
     {
         std::vector<std::uint8_t> public_key;
@@ -198,3 +199,5 @@ namespace vix::p2p
     };
 
 } // namespace vix::p2p
+
+#endif

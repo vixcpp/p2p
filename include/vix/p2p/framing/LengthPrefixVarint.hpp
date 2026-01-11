@@ -1,9 +1,11 @@
-#pragma once
+#ifndef LENGTH_PREFIX_VARINT_HPP
+#define LENGTH_PREFIX_VARINT_HPP
+
 #include <cstdint>
 #include <span>
 #include <vector>
-#include "../Framing.hpp"
-#include "../messages/Binary.hpp"
+#include <vix/p2p/Framing.hpp>
+#include <vix/p2p/messages/Binary.hpp>
 
 namespace vix::p2p::framing
 {
@@ -86,3 +88,5 @@ namespace vix::p2p::framing
     };
 
 } // namespace vix::p2p::framing
+
+#endif

@@ -1,4 +1,6 @@
-#pragma once
+#ifndef PEER_HPP
+#define PEER_HPP
+
 #include <cstdint>
 #include <string>
 #include <chrono>
@@ -35,10 +37,14 @@ namespace vix::p2p
 
         std::vector<std::uint8_t> public_key;
 
-        // secure channel state
+        // Secure session
         bool secure{false};
         std::vector<std::uint8_t> session_key_32; // 32 bytes
         std::uint64_t send_nonce_counter{1};      // start at 1
+
+        // Anti-replay (recv side) for AEAD packets
+        std::uint64_t recv_nonce_max{0};    // highest accepted counter
+        std::uint64_t recv_nonce_window{0}; // 64-bit window bitmap
     };
 
     struct HandshakeState
@@ -74,3 +80,5 @@ namespace vix::p2p
     };
 
 } // namespace vix::p2p
+
+#endif

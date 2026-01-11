@@ -1,4 +1,6 @@
-#pragma once
+#ifndef NODE_HPP
+#define NODE_HPP
+
 #include <string>
 #include <unordered_map>
 #include <memory>
@@ -151,3 +153,5 @@ namespace vix::p2p
     std::shared_ptr<Node> make_tcp_node(NodeConfig cfg);
 
 } // namespace vix::p2p
+
+#endif

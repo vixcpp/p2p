@@ -1,4 +1,6 @@
-#pragma once
+#ifndef PROTOCOL_HPP
+#define PROTOCOL_HPP
+
 #include <cstdint>
 #include <string_view>
 
@@ -59,3 +61,5 @@ namespace vix::p2p
         }
     }
 } // namespace vix::p2p
+
+#endif

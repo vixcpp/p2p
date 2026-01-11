@@ -1,4 +1,6 @@
-#pragma once
+#ifndef DISCOVERY_HPP
+#define DISCOVERY_HPP
+
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -11,7 +13,7 @@ namespace vix::p2p
     struct DiscoveryAnnouncement
     {
         std::string node_id;
-        std::string host;      // ip source (pas celle du json)
+        std::string host;      // ip
         std::uint16_t port{0}; // tcp listen port du peer
         std::string transport; // "tcp"
     };
@@ -64,3 +66,5 @@ namespace vix::p2p
     std::shared_ptr<Discovery> make_udp_discovery(DiscoveryConfig cfg, DiscoveryCallback on_peer);
 
 } // namespace vix::p2p
+
+#endif

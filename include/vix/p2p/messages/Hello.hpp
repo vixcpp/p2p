@@ -1,11 +1,13 @@
-#pragma once
+#ifndef HELLO_HPP
+#define HELLO_HPP
+
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include <span>
 #include <cstdint>
 
-#include "Binary.hpp"
+#include <vix/p2p/messages/Binary.hpp>
 
 namespace vix::p2p::msg
 {
@@ -23,7 +25,7 @@ namespace vix::p2p::msg
         std::unordered_map<std::string, std::string> capabilities;
 
         // crypto
-        std::vector<std::uint8_t> public_key; // raw bytes (tu fais base64 plus tard si besoin)
+        std::vector<std::uint8_t> public_key;
 
         std::vector<std::uint8_t> encode() const
         {
@@ -72,3 +74,5 @@ namespace vix::p2p::msg
         }
     };
 } // namespace vix::p2p::msg
+
+#endif

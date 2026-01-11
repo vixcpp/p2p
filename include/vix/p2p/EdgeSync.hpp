@@ -1,4 +1,6 @@
-#pragma once
+#ifndef EDGE_SYNC_HPP
+#define EDGE_SYNC_HPP
+
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -50,3 +52,5 @@ namespace vix::p2p
     };
 
 } // namespace vix::p2p
+
+#endif

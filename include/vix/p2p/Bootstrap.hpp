@@ -1,4 +1,6 @@
-#pragma once
+#ifndef BOOTSTRAP_HPP
+#define BOOTSTRAP_HPP
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -6,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "Peer.hpp"
+#include <vix/p2p/Peer.hpp>
 
 namespace vix::p2p
 {
@@ -65,3 +67,5 @@ namespace vix::p2p
     std::shared_ptr<Bootstrap> make_http_bootstrap(BootstrapConfig cfg, BootstrapCallback on_peer);
 
 } // namespace vix::p2p
+
+#endif

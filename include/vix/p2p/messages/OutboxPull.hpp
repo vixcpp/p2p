@@ -1,8 +1,10 @@
-#pragma once
+#ifndef OUTBOX_PULL_HPP
+#define OUTBOX_PULL_HPP
+
 #include <cstdint>
 #include <string>
 #include <span>
-#include "Binary.hpp"
+#include <vix/p2p/messages/Binary.hpp>
 
 namespace vix::p2p::msg
 {
@@ -33,3 +35,5 @@ namespace vix::p2p::msg
     };
 
 } // namespace vix::p2p::msg
+
+#endif

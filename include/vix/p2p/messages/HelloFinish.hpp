@@ -1,9 +1,11 @@
-#pragma once
+#ifndef HELLO_FINISH_HPP
+#define HELLO_FINISH_HPP
+
 #include <span>
 #include <vector>
 #include <cstdint>
 
-#include "Binary.hpp"
+#include <vix/p2p/messages/Binary.hpp>
 
 namespace vix::p2p::msg
 {
@@ -40,3 +42,5 @@ namespace vix::p2p::msg
         }
     };
 } // namespace vix::p2p::msg
+
+#endif
