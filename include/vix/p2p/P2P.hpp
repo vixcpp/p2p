@@ -3,7 +3,7 @@
 
 #include <memory>
 #include <optional>
-#include "Node.hpp"
+#include <vix/p2p/Node.hpp>
 
 namespace vix::p2p
 {

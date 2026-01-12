@@ -8,10 +8,10 @@
 #include <thread>
 #include <vector>
 
-#include "vix/p2p/P2P.hpp"
-#include "vix/p2p/Node.hpp"
-#include "vix/p2p/Peer.hpp"
-#include "vix/p2p/Bootstrap.hpp"
+#include <vix/p2p/P2P.hpp>
+#include <vix/p2p/Node.hpp>
+#include <vix/p2p/Peer.hpp>
+#include <vix/p2p/Bootstrap.hpp>
 
 static std::atomic<bool> g_running{true};
 

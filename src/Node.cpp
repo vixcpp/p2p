@@ -11,23 +11,23 @@
 #include <deque>
 #include <span>
 
-#include "vix/p2p/Node.hpp"
-#include "vix/p2p/Peer.hpp"
-#include "vix/p2p/Discovery.hpp"
-#include "vix/p2p/Router.hpp"
-#include "vix/p2p/EdgeSync.hpp"
-#include "vix/p2p/Crypto.hpp"
-#include "vix/p2p/Protocol.hpp"
+#include <vix/p2p/Node.hpp>
+#include <vix/p2p/Peer.hpp>
+#include <vix/p2p/Discovery.hpp>
+#include <vix/p2p/Router.hpp>
+#include <vix/p2p/EdgeSync.hpp>
+#include <vix/p2p/Crypto.hpp>
+#include <vix/p2p/Protocol.hpp>
 
-#include "vix/p2p/messages/Envelope.hpp"
-#include "vix/p2p/messages/Dispatch.hpp"
-#include "vix/p2p/messages/Pack.hpp"
-#include "vix/p2p/messages/Hello.hpp"
-#include "vix/p2p/messages/Ping.hpp"
-#include "vix/p2p/messages/Pong.hpp"
+#include <vix/p2p/messages/Envelope.hpp>
+#include <vix/p2p/messages/Dispatch.hpp>
+#include <vix/p2p/messages/Pack.hpp>
+#include <vix/p2p/messages/Hello.hpp>
+#include <vix/p2p/messages/Ping.hpp>
+#include <vix/p2p/messages/Pong.hpp>
 
-#include "vix/p2p/transport/Tcp.hpp"
-#include "vix/p2p/Bootstrap.hpp"
+#include <vix/p2p/transport/Tcp.hpp>
+#include <vix/p2p/Bootstrap.hpp>
 
 namespace vix::p2p
 {

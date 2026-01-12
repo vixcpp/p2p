@@ -76,6 +76,7 @@ push_main:
 merge:
 	@echo "🔀 Merging $(BRANCH_DEV) into $(BRANCH_MAIN)..."
 	@git checkout $(BRANCH_MAIN)
+	@git pull origin $(BRANCH_MAIN)
 	@git merge --no-ff --no-edit $(BRANCH_DEV)
 	@$(MAKE) push_main
 	@$(MAKE) return_dev
