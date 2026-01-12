@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <functional>
 
-#include "Peer.hpp"
+#include <vix/p2p/Peer.hpp>
 
 namespace vix::p2p
 {

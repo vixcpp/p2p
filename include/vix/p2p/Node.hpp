@@ -6,14 +6,14 @@
 #include <memory>
 #include <optional>
 
-#include "Peer.hpp"
-#include "Transport.hpp"
-#include "Discovery.hpp"
-#include "Bootstrap.hpp"
-#include "Router.hpp"
-#include "EdgeSync.hpp"
-#include "Crypto.hpp"
-#include "Protocol.hpp"
+#include <vix/p2p/Peer.hpp>
+#include <vix/p2p/Transport.hpp>
+#include <vix/p2p/Discovery.hpp>
+#include <vix/p2p/Bootstrap.hpp>
+#include <vix/p2p/Router.hpp>
+#include <vix/p2p/EdgeSync.hpp>
+#include <vix/p2p/Crypto.hpp>
+#include <vix/p2p/Protocol.hpp>
 
 namespace vix::p2p
 {
