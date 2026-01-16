@@ -1,5 +1,17 @@
-#ifndef HELLO_HPP
-#define HELLO_HPP
+/**
+ *
+ *  @file Hello.hpp
+ *  @author Gaspard Kirira
+ *
+ *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  https://github.com/vixcpp/vix
+ *  Use of this source code is governed by a MIT license
+ *  that can be found in the License file.
+ *
+ *  Vix.cpp
+ */
+#ifndef VIX_HELLO_HPP
+#define VIX_HELLO_HPP
 
 #include <string>
 #include <unordered_map>
@@ -11,68 +23,61 @@
 
 namespace vix::p2p::msg
 {
-    // Hello = HelloInit (A -> B)
-    struct Hello
+  // Hello = HelloInit (A -> B)
+  struct Hello
+  {
+    // anti-replay / handshake v2
+    std::uint64_t nonce_a{0};
+    std::uint64_t ts_ms{0};
+    // identity
+    std::string node_id;
+    // capabilities
+    std::unordered_map<std::string, std::string> capabilities;
+    // crypto
+    std::vector<std::uint8_t> public_key;
+
+    std::vector<std::uint8_t> encode() const
     {
-        // anti-replay / handshake v2
-        std::uint64_t nonce_a{0};
-        std::uint64_t ts_ms{0};
+      bin::Writer w;
+      w.reserve(96);
+      w.var_u64(nonce_a);
+      w.var_u64(ts_ms);
+      w.str_var(node_id);
+      w.var_u64((std::uint64_t)capabilities.size());
+      for (const auto &[k, v] : capabilities)
+      {
+        w.str_var(k);
+        w.str_var(v);
+      }
 
-        // identity
-        std::string node_id;
+      w.bytes_var(public_key);
+      return std::move(w.out);
+    }
 
-        // capabilities
-        std::unordered_map<std::string, std::string> capabilities;
+    static Hello decode_or_throw(std::span<const std::uint8_t> bytes)
+    {
+      bin::Reader r(bytes);
 
-        // crypto
-        std::vector<std::uint8_t> public_key;
+      Hello h;
+      h.nonce_a = r.var_u64();
+      h.ts_ms = r.var_u64();
+      h.node_id = r.str_var();
 
-        std::vector<std::uint8_t> encode() const
-        {
-            bin::Writer w;
-            w.reserve(96);
+      auto n = (std::size_t)r.var_u64();
+      for (std::size_t i = 0; i < n; ++i)
+      {
+        auto k = r.str_var();
+        auto v = r.str_var();
+        h.capabilities.emplace(std::move(k), std::move(v));
+      }
 
-            w.var_u64(nonce_a);
-            w.var_u64(ts_ms);
+      h.public_key = r.bytes_var();
 
-            w.str_var(node_id);
-
-            w.var_u64((std::uint64_t)capabilities.size());
-            for (const auto &[k, v] : capabilities)
-            {
-                w.str_var(k);
-                w.str_var(v);
-            }
-
-            w.bytes_var(public_key);
-            return std::move(w.out);
-        }
-
-        static Hello decode_or_throw(std::span<const std::uint8_t> bytes)
-        {
-            bin::Reader r(bytes);
-
-            Hello h;
-            h.nonce_a = r.var_u64();
-            h.ts_ms = r.var_u64();
-
-            h.node_id = r.str_var();
-
-            auto n = (std::size_t)r.var_u64();
-            for (std::size_t i = 0; i < n; ++i)
-            {
-                auto k = r.str_var();
-                auto v = r.str_var();
-                h.capabilities.emplace(std::move(k), std::move(v));
-            }
-
-            h.public_key = r.bytes_var();
-
-            if (r.remaining() != 0)
-                throw bin::Error("Hello: trailing bytes");
-            return h;
-        }
-    };
+      if (r.remaining() != 0)
+        throw bin::Error("Hello: trailing bytes");
+      return h;
+    }
+  };
 } // namespace vix::p2p::msg
 
 #endif

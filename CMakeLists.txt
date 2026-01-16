@@ -1,3 +1,11 @@
+#  @file CMakeLists.cpp
+#  @author Gaspard Kirira
+#
+#  Copyright 2025, Gaspard Kirira.  All rights reserved.
+#  https://github.com/vixcpp/vix
+#  Use of this source code is governed by a MIT license
+#  that can be found in the License file.
+#
 # ====================================================================
 # Vix.cpp — P2P Module (Coreless / Modular)
 # ====================================================================
@@ -18,15 +26,15 @@ set(CMAKE_DISABLE_FIND_PACKAGE_VixOrm ON)
 
 include(GNUInstallDirs)
 
-# ------------------------ Global settings ----------------------------
+# Global settings
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# ------------------------ Sources discovery --------------------------
+# Sources discovery
 file(GLOB_RECURSE P2P_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
-# ------------------------ Required: Net ------------------------------
+# Required: Net
 option(VIX_P2P_FETCH_NET "Auto-fetch vix::net if missing" ON)
 
 if (NOT TARGET vix::net)
@@ -48,7 +56,7 @@ endif()
 
 set(VIX_NET_TARGET vix::net)
 
-# ------------------------ Optional: Utils ----------------------------
+# Optional: Utils
 set(VIX_P2P_WITH_UTILS "AUTO" CACHE STRING "Link utils module (AUTO|ON|OFF)")
 set_property(CACHE VIX_P2P_WITH_UTILS PROPERTY STRINGS AUTO ON OFF)
 option(VIX_P2P_FETCH_UTILS "Auto-fetch vix::utils if missing (when required)" ON)
@@ -89,7 +97,7 @@ function(vix_p2p_try_link_utils onto link_scope)
   endif()
 endfunction()
 
-# ------------------------ Optional: Sync -----------------------------
+# Optional: Sync
 set(VIX_P2P_WITH_SYNC "AUTO" CACHE STRING "Link sync module (AUTO|ON|OFF)")
 set_property(CACHE VIX_P2P_WITH_SYNC PROPERTY STRINGS AUTO ON OFF)
 option(VIX_P2P_FETCH_SYNC "Auto-fetch vix::sync if missing (when required)" ON)
@@ -130,7 +138,7 @@ function(vix_p2p_try_link_sync onto link_scope)
   endif()
 endfunction()
 
-# ------------------------ Optional: Cache ----------------------------
+# Optional: Cache
 set(VIX_P2P_WITH_CACHE "AUTO" CACHE STRING "Link cache module (AUTO|ON|OFF)")
 set_property(CACHE VIX_P2P_WITH_CACHE PROPERTY STRINGS AUTO ON OFF)
 option(VIX_P2P_FETCH_CACHE "Auto-fetch vix::cache if missing (when required)" ON)
@@ -171,7 +179,7 @@ function(vix_p2p_try_link_cache onto link_scope)
   endif()
 endfunction()
 
-# ------------------------ Optional: JSON backend ----------------------
+# Optional: JSON backend
 set(VIX_P2P_WITH_JSON "AUTO" CACHE STRING "Link JSON backend (AUTO|ON|OFF)")
 set_property(CACHE VIX_P2P_WITH_JSON PROPERTY STRINGS AUTO ON OFF)
 
@@ -204,7 +212,7 @@ function(vix_p2p_try_link_json onto link_scope)
   endif()
 endfunction()
 
-# ------------------------ Optional SSL (future-ready) ----------------
+#  Optional SSL
 option(VIX_P2P_WITH_SSL "Enable OpenSSL integration for P2P" OFF)
 
 function(vix_p2p_try_link_ssl onto link_scope)
@@ -224,7 +232,7 @@ function(vix_p2p_try_link_ssl onto link_scope)
   endif()
 endfunction()
 
-# ============================== STATIC ===============================
+# STATIC
 if (P2P_SOURCES)
   message(STATUS "[p2p] Building STATIC library with detected sources.")
 
@@ -275,7 +283,7 @@ if (P2P_SOURCES)
   install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
           FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
 
-# ============================ HEADER-ONLY ============================
+# HEADER-ONLY
 else()
   message(STATUS "[p2p] Building HEADER-ONLY library (no sources).")
 
@@ -314,7 +322,7 @@ else()
           FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
 endif()
 
-# ------------------------ Tests (optional) ---------------------------
+# Tests
 option(VIX_P2P_BUILD_TESTS "Build p2p tests" OFF)
 
 if (VIX_P2P_BUILD_TESTS)
@@ -323,7 +331,7 @@ if (VIX_P2P_BUILD_TESTS)
   add_subdirectory(tests)
 endif()
 
-# ----------------------------- Summary -------------------------------
+# Summary
 message(STATUS "------------------------------------------------------")
 message(STATUS "vix::p2p configured (${PROJECT_VERSION})")
 if (P2P_SOURCES)
