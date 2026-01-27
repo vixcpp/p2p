@@ -34,6 +34,40 @@ endif()
 set(CMAKE_DISABLE_FIND_PACKAGE_VixOrm ON)
 
 include(GNUInstallDirs)
+# ----------------------------------------------------
+# Asio (standalone, header-only)
+# - Umbrella: must be provided by umbrella as vix::thirdparty_asio
+# - Standalone: can use vendored copy under third_party/asio/include (or fail)
+# ----------------------------------------------------
+function(vix_p2p_link_asio onto link_scope)
+  if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
+    if (TARGET vix::thirdparty_asio)
+      target_link_libraries(${onto} ${link_scope} vix::thirdparty_asio)
+      target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
+    else()
+      message(FATAL_ERROR "[p2p] Umbrella build: vix::thirdparty_asio must be provided by umbrella.")
+    endif()
+    return()
+  endif()
+
+    # Standalone mode (no umbrella)
+  # 1) Prefer vendored Asio inside p2p repo: p2p/third_party/asio/include
+  # 2) Fallback: umbrella-style layout: <root>/third_party/asio/include
+  set(_asio_dir_local  "${CMAKE_CURRENT_SOURCE_DIR}/third_party/asio/include")
+  set(_asio_dir_root   "${CMAKE_SOURCE_DIR}/third_party/asio/include")
+
+  if (EXISTS "${_asio_dir_local}/asio.hpp")
+    target_include_directories(${onto} ${link_scope} "${_asio_dir_local}")
+    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
+    message(STATUS "[p2p] Asio: using vendored Asio at ${_asio_dir_local}")
+  elseif (EXISTS "${_asio_dir_root}/asio.hpp")
+    target_include_directories(${onto} ${link_scope} "${_asio_dir_root}")
+    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
+    message(STATUS "[p2p] Asio: using root Asio at ${_asio_dir_root}")
+  else()
+    message(FATAL_ERROR "[p2p] Asio missing. Provide Asio at ${_asio_dir_local}/asio.hpp (standalone) or ${_asio_dir_root}/asio.hpp.")
+  endif()
+endfunction()
 
 # Global settings
 set(CMAKE_CXX_STANDARD 20)
@@ -330,14 +364,15 @@ if (P2P_SOURCES)
   add_library(vix::p2p ALIAS vix_p2p)
   target_compile_features(vix_p2p PUBLIC cxx_std_20)
 
-  target_include_directories(vix_p2p
-    PUBLIC
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-      $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-  )
+target_include_directories(vix_p2p
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
   # Required
   target_link_libraries(vix_p2p PUBLIC ${VIX_NET_TARGET})
+vix_p2p_link_asio(vix_p2p PUBLIC)
 
   # Optional deps
   vix_p2p_try_link_utils(vix_p2p PUBLIC)
@@ -381,12 +416,13 @@ else()
 
   target_compile_features(vix_p2p INTERFACE cxx_std_20)
 
-  target_include_directories(vix_p2p INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-  )
+ target_include_directories(vix_p2p INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
   target_link_libraries(vix_p2p INTERFACE ${VIX_NET_TARGET})
+vix_p2p_link_asio(vix_p2p INTERFACE)
 
   vix_p2p_try_link_utils(vix_p2p INTERFACE)
   vix_p2p_try_link_sync(vix_p2p INTERFACE)
