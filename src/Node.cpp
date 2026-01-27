@@ -741,9 +741,11 @@ namespace vix::p2p
       {
         out.flags = (std::uint32_t)EnvelopeFlag::Encrypted;
 
-        for (int i = 0; i < 8; ++i)
-          out.nonce[i] = (std::uint8_t)((ctr >> (8 * i)) & 0xFF);
-        out.nonce[8] = out.nonce[9] = out.nonce[10] = out.nonce[11] = 0;
+        for (std::size_t i = 0; i < 8; ++i)
+          out.nonce[i] = static_cast<std::uint8_t>((ctr >> (8u * i)) & 0xFFu);
+
+        for (std::size_t i = 8; i < out.nonce.size(); ++i)
+          out.nonce[i] = 0;
 
         auto aad = pack::make_aad(out);
 
@@ -1131,8 +1133,8 @@ namespace vix::p2p
     {
       // nonce12 = [u64 counter LE] + [u32 zeros]
       std::uint64_t ctr = 0;
-      for (int i = 0; i < 8; ++i)
-        ctr |= (std::uint64_t)nonce[i] << (8 * i);
+      for (std::size_t i = 0; i < 8; ++i)
+        ctr |= (static_cast<std::uint64_t>(nonce[i]) << (8u * i));
       return ctr;
     }
 
