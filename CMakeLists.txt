@@ -20,16 +20,72 @@
 #   - OpenSSL (OFF by default)
 # ====================================================================
 
-cmake_minimum_required(VERSION 3.20)
-project(vix_p2p VERSION 1.0.0 LANGUAGES CXX)
+# Standalone vs Umbrella
+if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  cmake_minimum_required(VERSION 3.20)
+  project(vix_p2p VERSION 1.0.0 LANGUAGES CXX)
+
+  # Global settings (standalone only)
+  set(CMAKE_CXX_STANDARD 20)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+
 set(CMAKE_DISABLE_FIND_PACKAGE_VixOrm ON)
 
 include(GNUInstallDirs)
+# ----------------------------------------------------
+# Asio (standalone, header-only)
+# - Umbrella: must be provided by umbrella as vix::thirdparty_asio
+# - Standalone: can use vendored copy under third_party/asio/include (or fail)
+# ----------------------------------------------------
+function(vix_p2p_link_asio onto link_scope)
+  if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
+    if (TARGET vix::thirdparty_asio)
+      target_link_libraries(${onto} ${link_scope} vix::thirdparty_asio)
+      target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
+    else()
+      message(FATAL_ERROR "[p2p] Umbrella build: vix::thirdparty_asio must be provided by umbrella.")
+    endif()
+    return()
+  endif()
+
+    # Standalone mode (no umbrella)
+  # 1) Prefer vendored Asio inside p2p repo: p2p/third_party/asio/include
+  # 2) Fallback: umbrella-style layout: <root>/third_party/asio/include
+  set(_asio_dir_local  "${CMAKE_CURRENT_SOURCE_DIR}/third_party/asio/include")
+  set(_asio_dir_root   "${CMAKE_SOURCE_DIR}/third_party/asio/include")
+
+  if (EXISTS "${_asio_dir_local}/asio.hpp")
+    target_include_directories(${onto} ${link_scope} "${_asio_dir_local}")
+    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
+    message(STATUS "[p2p] Asio: using vendored Asio at ${_asio_dir_local}")
+  elseif (EXISTS "${_asio_dir_root}/asio.hpp")
+    target_include_directories(${onto} ${link_scope} "${_asio_dir_root}")
+    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
+    message(STATUS "[p2p] Asio: using root Asio at ${_asio_dir_root}")
+  else()
+    message(FATAL_ERROR "[p2p] Asio missing. Provide Asio at ${_asio_dir_local}/asio.hpp (standalone) or ${_asio_dir_root}/asio.hpp.")
+  endif()
+endfunction()
 
 # Global settings
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# --------------------------------------------------------------------
+# Umbrella build policy:
+# When building inside the Vix umbrella, dependencies are managed by the
+# umbrella (add_subdirectory order + options). P2P must not FetchContent
+# nor add sibling subdirectories.
+# --------------------------------------------------------------------
+if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
+  set(VIX_P2P_FETCH_NET   OFF CACHE BOOL "Auto-fetch vix::net if missing" FORCE)
+  set(VIX_P2P_FETCH_UTILS OFF CACHE BOOL "Auto-fetch vix::utils if missing" FORCE)
+  set(VIX_P2P_FETCH_SYNC  OFF CACHE BOOL "Auto-fetch vix::sync if missing" FORCE)
+  set(VIX_P2P_FETCH_CACHE OFF CACHE BOOL "Auto-fetch vix::cache if missing" FORCE)
+endif()
 
 # Sources discovery
 file(GLOB_RECURSE P2P_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
@@ -37,20 +93,27 @@ file(GLOB_RECURSE P2P_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 # Required: Net
 option(VIX_P2P_FETCH_NET "Auto-fetch vix::net if missing" ON)
 
-if (NOT TARGET vix::net)
-  if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/../net/CMakeLists.txt")
-    message(STATUS "[p2p] Adding net from umbrella: ../net")
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../net" "net")
-  elseif (VIX_P2P_FETCH_NET)
-    include(FetchContent)
-    message(STATUS "[p2p] Fetching vix::net via FetchContent")
-    FetchContent_Declare(vix_net
-      GIT_REPOSITORY https://github.com/vixcpp/net.git
-      GIT_TAG        v0.1.0
-    )
-    FetchContent_MakeAvailable(vix_net)
-  else()
-    message(FATAL_ERROR "vix::net not found. Provide it before p2p or enable VIX_P2P_FETCH_NET=ON.")
+if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
+  # Umbrella owns dependency graph: never add_subdirectory/FetchContent here.
+  if (NOT TARGET vix::net)
+    message(FATAL_ERROR "[p2p] Umbrella build: vix::net must be provided by umbrella before p2p.")
+  endif()
+else()
+  if (NOT TARGET vix::net)
+    if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/../net/CMakeLists.txt")
+      message(STATUS "[p2p] Adding net from umbrella: ../net")
+      add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../net" "net")
+    elseif (VIX_P2P_FETCH_NET)
+      include(FetchContent)
+      message(STATUS "[p2p] Fetching vix::net via FetchContent")
+      FetchContent_Declare(vix_net
+        GIT_REPOSITORY https://github.com/vixcpp/net.git
+        GIT_TAG        v0.1.0
+      )
+      FetchContent_MakeAvailable(vix_net)
+    else()
+      message(FATAL_ERROR "vix::net not found. Provide it before p2p or enable VIX_P2P_FETCH_NET=ON.")
+    endif()
   endif()
 endif()
 
@@ -68,6 +131,24 @@ function(vix_p2p_try_link_utils onto link_scope)
     return()
   endif()
 
+  # Umbrella mode: deps are owned by umbrella (no add_subdirectory / no FetchContent here)
+  if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
+    if (TARGET vix::utils)
+      message(STATUS "[p2p] Utils backend: vix::utils (umbrella)")
+      target_link_libraries(${onto} ${link_scope} vix::utils)
+      target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_UTILS=1)
+    else()
+      if (VIX_P2P_WITH_UTILS STREQUAL "ON")
+        message(FATAL_ERROR "Utils required but vix::utils not found (umbrella build).")
+      else()
+        message(STATUS "[p2p] Utils not detected; building without utils. (umbrella)")
+        target_compile_definitions(${onto} ${link_scope} VIX_P2P_NO_UTILS=1)
+      endif()
+    endif()
+    return()
+  endif()
+
+  # Standalone mode: may add sibling or FetchContent
   if (NOT TARGET vix::utils)
     if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/../utils/CMakeLists.txt")
       message(STATUS "[p2p] Adding utils from umbrella: ../utils")
@@ -97,6 +178,7 @@ function(vix_p2p_try_link_utils onto link_scope)
   endif()
 endfunction()
 
+
 # Optional: Sync
 set(VIX_P2P_WITH_SYNC "AUTO" CACHE STRING "Link sync module (AUTO|ON|OFF)")
 set_property(CACHE VIX_P2P_WITH_SYNC PROPERTY STRINGS AUTO ON OFF)
@@ -109,6 +191,24 @@ function(vix_p2p_try_link_sync onto link_scope)
     return()
   endif()
 
+  # Umbrella mode: deps are owned by umbrella (no add_subdirectory / no FetchContent here)
+  if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
+    if (TARGET vix::sync)
+      message(STATUS "[p2p] Sync backend: vix::sync (umbrella)")
+      target_link_libraries(${onto} ${link_scope} vix::sync)
+      target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_SYNC=1)
+    else()
+      if (VIX_P2P_WITH_SYNC STREQUAL "ON")
+        message(FATAL_ERROR "Sync required but vix::sync not found (umbrella build).")
+      else()
+        message(STATUS "[p2p] Sync not detected; building without sync. (umbrella)")
+        target_compile_definitions(${onto} ${link_scope} VIX_P2P_NO_SYNC=1)
+      endif()
+    endif()
+    return()
+  endif()
+
+  # Standalone mode: may add sibling or FetchContent
   if (NOT TARGET vix::sync)
     if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/../sync/CMakeLists.txt")
       message(STATUS "[p2p] Adding sync from umbrella: ../sync")
@@ -138,6 +238,7 @@ function(vix_p2p_try_link_sync onto link_scope)
   endif()
 endfunction()
 
+
 # Optional: Cache
 set(VIX_P2P_WITH_CACHE "AUTO" CACHE STRING "Link cache module (AUTO|ON|OFF)")
 set_property(CACHE VIX_P2P_WITH_CACHE PROPERTY STRINGS AUTO ON OFF)
@@ -150,6 +251,24 @@ function(vix_p2p_try_link_cache onto link_scope)
     return()
   endif()
 
+  # Umbrella mode: deps are owned by umbrella (no add_subdirectory / no FetchContent here)
+  if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
+    if (TARGET vix::cache)
+      message(STATUS "[p2p] Cache backend: vix::cache (umbrella)")
+      target_link_libraries(${onto} ${link_scope} vix::cache)
+      target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_CACHE=1)
+    else()
+      if (VIX_P2P_WITH_CACHE STREQUAL "ON")
+        message(FATAL_ERROR "Cache required but vix::cache not found (umbrella build).")
+      else()
+        message(STATUS "[p2p] Cache not detected; building without cache. (umbrella)")
+        target_compile_definitions(${onto} ${link_scope} VIX_P2P_NO_CACHE=1)
+      endif()
+    endif()
+    return()
+  endif()
+
+  # Standalone mode: may add sibling or FetchContent
   if (NOT TARGET vix::cache)
     if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/../cache/CMakeLists.txt")
       message(STATUS "[p2p] Adding cache from umbrella: ../cache")
@@ -245,14 +364,15 @@ if (P2P_SOURCES)
   add_library(vix::p2p ALIAS vix_p2p)
   target_compile_features(vix_p2p PUBLIC cxx_std_20)
 
-  target_include_directories(vix_p2p
-    PUBLIC
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-      $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-  )
+target_include_directories(vix_p2p
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
   # Required
   target_link_libraries(vix_p2p PUBLIC ${VIX_NET_TARGET})
+vix_p2p_link_asio(vix_p2p PUBLIC)
 
   # Optional deps
   vix_p2p_try_link_utils(vix_p2p PUBLIC)
@@ -296,12 +416,13 @@ else()
 
   target_compile_features(vix_p2p INTERFACE cxx_std_20)
 
-  target_include_directories(vix_p2p INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-  )
+ target_include_directories(vix_p2p INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
   target_link_libraries(vix_p2p INTERFACE ${VIX_NET_TARGET})
+vix_p2p_link_asio(vix_p2p INTERFACE)
 
   vix_p2p_try_link_utils(vix_p2p INTERFACE)
   vix_p2p_try_link_sync(vix_p2p INTERFACE)
