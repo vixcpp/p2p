@@ -48,10 +48,11 @@ namespace vix::p2p::pack
       aad.push_back(std::uint8_t((v >> 16) & 0xFF));
       aad.push_back(std::uint8_t((v >> 24) & 0xFF));
     };
+
     auto push_u64 = [&](std::uint64_t v)
     {
-      for (int i = 0; i < 8; ++i)
-        aad.push_back(std::uint8_t((v >> (8 * i)) & 0xFF));
+      for (std::size_t i = 0; i < 8; ++i)
+        aad.push_back(static_cast<std::uint8_t>((v >> (8u * i)) & 0xFFu));
     };
 
     push_u16(e.version.major);
@@ -79,9 +80,10 @@ namespace vix::p2p::pack
     e.flags = (std::uint32_t)EnvelopeFlag::Encrypted | extra_flags;
 
     // nonce12 = [u64 counter LE] + [u32 zeros]
-    for (int i = 0; i < 8; ++i)
-      e.nonce[i] = std::uint8_t((nonce_counter >> (8 * i)) & 0xFF);
-    for (int i = 8; i < 12; ++i)
+    for (std::size_t i = 0; i < 8; ++i)
+      e.nonce[i] = static_cast<std::uint8_t>((nonce_counter >> (8u * i)) & 0xFFu);
+
+    for (std::size_t i = 8; i < e.nonce.size(); ++i)
       e.nonce[i] = 0;
 
     auto aad = make_aad(e);

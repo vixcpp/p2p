@@ -70,9 +70,13 @@ namespace vix::p2p::bin
     std::uint64_t u64_le()
     {
       require(8);
+
       std::uint64_t v = 0;
-      for (int i = 0; i < 8; ++i)
-        v |= (std::uint64_t)s[off + i] << (8 * i);
+      for (std::size_t i = 0; i < 8; ++i)
+      {
+        v |= (static_cast<std::uint64_t>(s[off + i]) << (8u * i));
+      }
+
       off += 8;
       return v;
     }
@@ -145,8 +149,8 @@ namespace vix::p2p::bin
 
     void u64_le(std::uint64_t v)
     {
-      for (int i = 0; i < 8; ++i)
-        out.push_back((std::uint8_t)((v >> (8 * i)) & 0xFF));
+      for (std::size_t i = 0; i < 8; ++i)
+        out.push_back(static_cast<std::uint8_t>((v >> (8u * i)) & 0xFFu));
     }
 
     void var_u64(std::uint64_t v)
