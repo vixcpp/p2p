@@ -68,9 +68,10 @@ namespace vix::p2p
 
       asio::post(ioc_, [self = shared_from_this()]()
                  {
-                std::error_code ec;
-                self->timer_.cancel(ec);
-                self->sock_.close(ec); });
+             (void)self->timer_.cancel();
+
+             asio::error_code ec;
+             self->sock_.close(ec); });
 
       ioc_.stop();
       if (thr_.joinable())

@@ -265,9 +265,7 @@ namespace vix::p2p
         return;
 
       asio::post(ioc_, [self = shared_from_this()]()
-                 {
-                std::error_code ec;
-                self->timer_.cancel(ec); });
+                 { (void)self->timer_.cancel(); });
 
       ioc_.stop();
       if (thr_.joinable())
@@ -411,8 +409,7 @@ namespace vix::p2p
           {
             if (ec)
             {
-              std::error_code ign;
-              t_connect->cancel(ign);
+              (void)t_connect->cancel();
               done(false, {});
               return;
             }
@@ -423,8 +420,7 @@ namespace vix::p2p
                 [self, socket, response, t_connect, request, done = std::move(done)](
                     std::error_code ec2, const tcp::endpoint &) mutable
                 {
-                  std::error_code ign;
-                  t_connect->cancel(ign);
+                  (void)t_connect->cancel();
 
                   if (ec2)
                   {
@@ -450,8 +446,7 @@ namespace vix::p2p
                       {
                         if (ecw)
                         {
-                          std::error_code ign;
-                          t_req->cancel(ign);
+                          (void)t_req->cancel();
                           done(false, {});
                           return;
                         }
@@ -473,8 +468,7 @@ namespace vix::p2p
                                   // enforce max bytes
                                   if (response->size() + n > self->cfg_.max_http_bytes)
                                   {
-                                    std::error_code ign;
-                                    t_req->cancel(ign);
+                                    (void)t_req->cancel();
                                     std::error_code ign2;
                                     socket->close(ign2);
                                     done(false, {});
@@ -487,8 +481,7 @@ namespace vix::p2p
 
                                 if (ecr)
                                 {
-                                  std::error_code ign;
-                                  t_req->cancel(ign);
+                                  (void)t_req->cancel();
 
                                   // EOF = success (server closed)
                                   if (ecr == asio::error::eof)
