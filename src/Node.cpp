@@ -105,7 +105,7 @@ namespace vix::p2p
 
       if (acceptor_)
       {
-        std::error_code ec;
+        asio::error_code ec;
         acceptor_->close(ec);
       }
 
@@ -125,14 +125,12 @@ namespace vix::p2p
       for (auto &t : to_close)
         t->close();
 
-      std::error_code ec;
-      heartbeat_.cancel(ec);
+      (void)heartbeat_.cancel();
 
       if (bootstrap_)
         bootstrap_->stop();
 
-      std::error_code ec2;
-      bootstrap_timer_.cancel(ec2);
+      (void)bootstrap_timer_.cancel();
 
       ioc_.stop();
       if (io_thread_.joinable())
