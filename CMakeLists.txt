@@ -37,37 +37,105 @@ include(GNUInstallDirs)
 # ----------------------------------------------------
 # Asio (standalone, header-only)
 # - Umbrella: must be provided by umbrella as vix::thirdparty_asio
-# - Standalone: can use vendored copy under third_party/asio/include (or fail)
+# - Standalone: try to find a vendored copy by walking up directories:
+#   - third_party/asio-src/asio/include/asio.hpp   (umbrella layout)
+#   - third_party/asio/include/asio.hpp            (legacy layout)
+#   - modules/p2p/third_party/asio/include/asio.hpp (module-local)
 # ----------------------------------------------------
 function(vix_p2p_link_asio onto link_scope)
+  # -------------------------
+  # Umbrella mode
+  # -------------------------
   if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
     if (TARGET vix::thirdparty_asio)
       target_link_libraries(${onto} ${link_scope} vix::thirdparty_asio)
       target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
-    else()
-      message(FATAL_ERROR "[p2p] Umbrella build: vix::thirdparty_asio must be provided by umbrella.")
+      return()
     endif()
+    message(FATAL_ERROR "[p2p] Umbrella build: vix::thirdparty_asio must be provided by umbrella.")
+  endif()
+
+  # -------------------------
+  # Standalone mode
+  # -------------------------
+
+  # Helper: walk up from a start dir and find asio.hpp under a relative path.
+  function(_vix_find_asio_upwards out_dir start_dir rel_path)
+    set(_cur "${start_dir}")
+    set(_found "")
+
+    while (TRUE)
+      if (EXISTS "${_cur}/${rel_path}/asio.hpp")
+        set(_found "${_cur}/${rel_path}")
+        break()
+      endif()
+
+      get_filename_component(_parent "${_cur}" DIRECTORY)
+      if (_parent STREQUAL _cur)
+        break()
+      endif()
+      set(_cur "${_parent}")
+    endwhile()
+
+    set(${out_dir} "${_found}" PARENT_SCOPE)
+  endfunction()
+
+  # 1) module-local (when p2p repo vendors its own Asio)
+  set(_asio_local_p2p   "${CMAKE_CURRENT_LIST_DIR}/third_party/asio/include")
+  set(_asio_local_http  "${CMAKE_SOURCE_DIR}/third_party/asio/include") # if configuring from p2p_http root
+  if (EXISTS "${_asio_local_p2p}/asio.hpp")
+    target_include_directories(${onto} SYSTEM ${link_scope} "${_asio_local_p2p}")
+    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
+    message(STATUS "[p2p] Asio: using module-local Asio at ${_asio_local_p2p}")
+    return()
+  endif()
+  if (EXISTS "${_asio_local_http}/asio.hpp")
+    target_include_directories(${onto} SYSTEM ${link_scope} "${_asio_local_http}")
+    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
+    message(STATUS "[p2p] Asio: using local Asio at ${_asio_local_http}")
     return()
   endif()
 
-    # Standalone mode (no umbrella)
-  # 1) Prefer vendored Asio inside p2p repo: p2p/third_party/asio/include
-  # 2) Fallback: umbrella-style layout: <root>/third_party/asio/include
-  set(_asio_dir_local  "${CMAKE_CURRENT_SOURCE_DIR}/third_party/asio/include")
-  set(_asio_dir_root   "${CMAKE_SOURCE_DIR}/third_party/asio/include")
-
-  if (EXISTS "${_asio_dir_local}/asio.hpp")
-    target_include_directories(${onto} SYSTEM ${link_scope} "${_asio_dir_local}")
-    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
-    message(STATUS "[p2p] Asio: using vendored Asio at ${_asio_dir_local}")
-  elseif (EXISTS "${_asio_dir_root}/asio.hpp")
-    target_include_directories(${onto} SYSTEM ${link_scope} "${_asio_dir_root}")
-    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
-    message(STATUS "[p2p] Asio: using root Asio at ${_asio_dir_root}")
-  else()
-    message(FATAL_ERROR "[p2p] Asio missing. Provide Asio at ${_asio_dir_local}/asio.hpp (standalone) or ${_asio_dir_root}/asio.hpp.")
+  # 2) umbrella repo layout: third_party/asio-src/asio/include
+  set(_asio_up "")
+  _vix_find_asio_upwards(_asio_up "${CMAKE_CURRENT_LIST_DIR}" "third_party/asio-src/asio/include")
+  if (_asio_up STREQUAL "")
+    _vix_find_asio_upwards(_asio_up "${CMAKE_SOURCE_DIR}" "third_party/asio-src/asio/include")
   endif()
+
+  if (NOT _asio_up STREQUAL "")
+    target_include_directories(${onto} SYSTEM ${link_scope} "${_asio_up}")
+    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
+    message(STATUS "[p2p] Asio: found umbrella Asio at ${_asio_up}")
+    return()
+  endif()
+
+  # 3) legacy layout: third_party/asio/include
+  set(_asio_up_legacy "")
+  _vix_find_asio_upwards(_asio_up_legacy "${CMAKE_CURRENT_LIST_DIR}" "third_party/asio/include")
+  if (_asio_up_legacy STREQUAL "")
+    _vix_find_asio_upwards(_asio_up_legacy "${CMAKE_SOURCE_DIR}" "third_party/asio/include")
+  endif()
+
+  if (NOT _asio_up_legacy STREQUAL "")
+    target_include_directories(${onto} SYSTEM ${link_scope} "${_asio_up_legacy}")
+    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
+    message(STATUS "[p2p] Asio: found legacy Asio at ${_asio_up_legacy}")
+    return()
+  endif()
+
+  message(FATAL_ERROR
+    "[p2p] Asio missing.\n"
+    "Searched:\n"
+    "  - ${_asio_local_p2p}/asio.hpp\n"
+    "  - ${_asio_local_http}/asio.hpp\n"
+    "  - <upwards>/third_party/asio-src/asio/include/asio.hpp\n"
+    "  - <upwards>/third_party/asio/include/asio.hpp\n"
+    "Fix: ensure repo submodule 'third_party/asio-src' is present (umbrella),\n"
+    "or vendor Asio inside modules/p2p/third_party/asio/include."
+  )
 endfunction()
+
 
 # Global settings
 set(CMAKE_CXX_STANDARD 20)
