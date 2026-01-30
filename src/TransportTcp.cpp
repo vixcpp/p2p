@@ -56,6 +56,9 @@ namespace vix::p2p
     {
       if (closed.exchange(true))
         return;
+
+      on_envelope = {};
+
       asio::error_code ec;
       socket.shutdown(tcp::socket::shutdown_both, ec);
       socket.close(ec);
@@ -143,16 +146,20 @@ namespace vix::p2p
                                  self->read_chunk.begin() + (std::ptrdiff_t)n);
 
             auto decoded = self->framer.decode(self->pending);
-            self->pending = std::move(decoded.remaining);
 
+            // 1) process frames FIRST (before moving remaining)
             for (auto &f : decoded.frames)
             {
               self->stats.frames_received++;
               try
               {
                 Envelope env = Envelope::decode_or_throw(f.bytes);
+
                 if (self->on_envelope)
                   self->on_envelope(self->peer_id, env);
+
+                if (self->closed.load())
+                  return;
               }
               catch (...)
               {
@@ -160,6 +167,9 @@ namespace vix::p2p
                 return;
               }
             }
+
+            // 2) only then keep remaining bytes
+            self->pending = std::move(decoded.remaining);
 
             self->do_read();
           });
