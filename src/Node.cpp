@@ -98,6 +98,7 @@ namespace vix::p2p
     {
       if (!running_)
         return;
+      stopping_ = true;
       running_ = false;
 
       if (discovery_)
@@ -299,6 +300,29 @@ namespace vix::p2p
       if (ec) return;
       on_inbound_socket(std::move(sock));
       if (running_) do_accept(); });
+    }
+
+    void disconnect_impl_(const PeerId &peer_id)
+    {
+      std::shared_ptr<Transport> t;
+
+      {
+        std::scoped_lock lk(mu_);
+
+        auto itT = transports_.find(peer_id);
+        if (itT != transports_.end())
+        {
+          t = itT->second;
+          transports_.erase(itT);
+        }
+
+        auto itP = peers_.find(peer_id);
+        if (itP != peers_.end())
+          itP->second.state = PeerState::Closed;
+      }
+
+      if (t)
+        t->close();
     }
 
     void on_inbound_socket(tcp::socket sock)
@@ -547,7 +571,7 @@ namespace vix::p2p
     {
       try
       {
-        if (!running_)
+        if (!running_ || stopping_)
           return;
 
         std::vector<std::uint8_t> plaintext;
@@ -623,7 +647,9 @@ namespace vix::p2p
       }
       catch (...)
       {
-        disconnect(peer_id);
+        if (!running_)
+          return;
+        disconnect_impl_(peer_id);
       }
     }
 
@@ -787,6 +813,7 @@ namespace vix::p2p
     static constexpr auto kBootstrapConnectCooldown = std::chrono::seconds(12);
     std::unordered_map<std::string, std::chrono::steady_clock::time_point> bootstrap_last_connect_;
     KeyPair self_keys_{};
+    std::atomic<bool> stopping_{false};
 
     struct SeenHandshake
     {
