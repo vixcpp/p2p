@@ -37,6 +37,8 @@
 #include <vix/p2p/messages/Hello.hpp>
 #include <vix/p2p/messages/Ping.hpp>
 #include <vix/p2p/messages/Pong.hpp>
+#include <vix/p2p/messages/HelloAck.hpp>
+#include <vix/p2p/messages/HelloFinish.hpp>
 
 #include <vix/p2p/transport/Tcp.hpp>
 #include <vix/p2p/Bootstrap.hpp>
@@ -428,7 +430,6 @@ namespace vix::p2p
       }
 
       schedule_handshake_timeout_(pid);
-      send_hello(pid);
     }
 
     bool has_peer_by_endpoint_unlocked_(const PeerEndpoint &ep) const
@@ -521,71 +522,107 @@ namespace vix::p2p
 
     void on_hello(const PeerId &peer_id, const msg::Hello &h)
     {
-      std::scoped_lock lk(mu_);
+      Envelope out_env;
 
-      auto &peer = peers_[peer_id];
+      {
+        std::scoped_lock lk(mu_);
 
-      auto now_ms = now_ms_();
-      if (std::llabs((long long)now_ms - (long long)h.ts_ms) > 60'000)
-        throw std::runtime_error("hello replay");
+        auto &peer = peers_[peer_id];
 
-      peer.handshake.emplace();
-      peer.handshake->stage = HandshakeState::Stage::HelloReceived;
-      peer.handshake->nonce_a = h.nonce_a;
-      peer.handshake->ts_ms = h.ts_ms;
-      peer.handshake->started_at = std::chrono::steady_clock::now();
-      peer.meta.public_key = h.public_key;
+        auto now_ms = now_ms_();
+        if (std::llabs((long long)now_ms - (long long)h.ts_ms) > 60'000)
+          throw std::runtime_error("hello replay");
 
-      constexpr std::size_t kMinPubKey = 16;
-      constexpr std::size_t kMaxPubKey = 2048;
+        peer.handshake.emplace();
+        peer.handshake->stage = HandshakeState::Stage::HelloReceived;
+        peer.handshake->nonce_a = h.nonce_a;
+        peer.handshake->ts_ms = h.ts_ms;
+        peer.handshake->started_at = std::chrono::steady_clock::now();
 
-      if (peer.meta.public_key.size() < kMinPubKey || peer.meta.public_key.size() > kMaxPubKey)
-        throw std::runtime_error("bad public_key size");
+        peer.meta.public_key = h.public_key;
 
-      msg::HelloAck ack;
-      ack.nonce_a = h.nonce_a;
-      ack.nonce_b = rand_u64_();
-      peer.handshake->nonce_b = ack.nonce_b;
-      peer.handshake->stage = HandshakeState::Stage::AckSent;
-      send_envelope(peer_id, pack::make_envelope(MessageType::HelloAck, ack));
+        constexpr std::size_t kMinPubKey = 16;
+        constexpr std::size_t kMaxPubKey = 2048;
+        if (peer.meta.public_key.size() < kMinPubKey || peer.meta.public_key.size() > kMaxPubKey)
+          throw std::runtime_error("bad public_key size");
+
+        msg::HelloAck ack;
+        ack.nonce_a = h.nonce_a;
+        ack.nonce_b = rand_u64_();
+
+        ack.public_key = self_keys_.public_key;
+
+        peer.handshake->nonce_b = ack.nonce_b;
+        peer.handshake->stage = HandshakeState::Stage::AckSent;
+
+        out_env = pack::make_envelope(MessageType::HelloAck, ack);
+      }
+
+      // ✅ send OUTSIDE the lock (avoid deadlock)
+      send_envelope(peer_id, out_env);
     }
 
     void on_hello_ack(const PeerId &peer_id, const msg::HelloAck &a)
     {
-      std::scoped_lock lk(mu_);
+      Envelope out_env;
 
-      auto &peer = peers_[peer_id];
+      {
+        std::scoped_lock lk(mu_);
 
-      if (!peer.handshake)
-        throw std::runtime_error("missing handshake state");
+        auto &peer = peers_[peer_id];
 
-      auto &hs = *peer.handshake;
+        if (!peer.handshake)
+          throw std::runtime_error("missing handshake state");
 
-      if (hs.ts_ms == 0)
-        throw std::runtime_error("hs missing ts_ms");
+        auto &hs = *peer.handshake;
 
-      if (hs.stage != HandshakeState::Stage::HelloSent)
-        throw std::runtime_error("unexpected HelloAck");
+        if (hs.ts_ms == 0)
+          throw std::runtime_error("hs missing ts_ms");
 
-      if (a.nonce_a != hs.nonce_a)
-        throw std::runtime_error("nonce mismatch");
+        if (hs.stage != HandshakeState::Stage::HelloSent)
+          throw std::runtime_error("unexpected HelloAck");
 
-      hs.nonce_b = a.nonce_b;
-      hs.stage = HandshakeState::Stage::AckReceived;
+        if (a.nonce_a != hs.nonce_a)
+          throw std::runtime_error("nonce mismatch");
 
-      auto data = make_handshake_bytes_(
-          hs.nonce_a,
-          hs.nonce_b,
-          hs.ts_ms,
-          kProto_.major,
-          kProto_.minor,
-          kTransport_());
+        peer.meta.public_key = a.public_key;
 
-      msg::HelloFinish fin;
-      fin.nonce_a = hs.nonce_a;
-      fin.nonce_b = hs.nonce_b;
-      fin.signature = crypto_->sign(data, self_keys_.private_key);
-      send_envelope(peer_id, pack::make_envelope(MessageType::HelloFinish, fin));
+        constexpr std::size_t kMinPubKey = 16;
+        constexpr std::size_t kMaxPubKey = 2048;
+        if (peer.meta.public_key.size() < kMinPubKey || peer.meta.public_key.size() > kMaxPubKey)
+          throw std::runtime_error("bad public_key size");
+
+        hs.nonce_b = a.nonce_b;
+        hs.stage = HandshakeState::Stage::AckReceived;
+
+        auto data = make_handshake_bytes_(
+            hs.nonce_a,
+            hs.nonce_b,
+            hs.ts_ms,
+            kProto_.major,
+            kProto_.minor,
+            kTransport_());
+
+        msg::HelloFinish fin;
+        fin.nonce_a = hs.nonce_a;
+        fin.nonce_b = hs.nonce_b;
+        fin.signature = crypto_->sign(data, self_keys_.private_key);
+
+        auto sk = derive_session_key_unlocked_(hs, peer.meta.public_key);
+
+        peer.meta.session_key_32 = std::move(sk);
+        peer.meta.secure = true;
+        peer.meta.send_nonce_counter = 1;
+
+        peer.state = PeerState::Connected;
+        peer.handshake.reset();
+        stats_.handshakes_completed++;
+
+        out_env = pack::make_envelope(MessageType::HelloFinish, fin);
+      }
+
+      // ✅ send OUTSIDE lock
+      send_envelope(peer_id, out_env);
     }
 
     void on_hello_finish(const PeerId &peer_id, const msg::HelloFinish &f)
@@ -725,10 +762,18 @@ namespace vix::p2p
           return;
         }
       }
+      catch (const std::exception &e)
+      {
+        if (!running_)
+          return;
+        log_(std::string("[p2p] envelope error: ") + e.what() + " peer_id=" + peer_id);
+        disconnect_impl_(peer_id);
+      }
       catch (...)
       {
         if (!running_)
           return;
+        log_(std::string("[p2p] envelope error: unknown exception peer_id=") + peer_id);
         disconnect_impl_(peer_id);
       }
     }
@@ -756,11 +801,15 @@ namespace vix::p2p
       h.node_id = cfg_.node_id;
       h.public_key = self_keys_.public_key;
 
-      peers_[peer_id].handshake.emplace();
-      peers_[peer_id].handshake->nonce_a = h.nonce_a;
-      peers_[peer_id].handshake->ts_ms = h.ts_ms;
-      peers_[peer_id].handshake->stage = HandshakeState::Stage::HelloSent;
-      peers_[peer_id].handshake->started_at = std::chrono::steady_clock::now();
+      {
+        std::scoped_lock lk(mu_);
+        auto &p = peers_[peer_id];
+        p.handshake.emplace();
+        p.handshake->nonce_a = h.nonce_a;
+        p.handshake->ts_ms = h.ts_ms;
+        p.handshake->stage = HandshakeState::Stage::HelloSent;
+        p.handshake->started_at = std::chrono::steady_clock::now();
+      }
 
       send_envelope(peer_id, pack::make_envelope(MessageType::Hello, h));
     }
@@ -946,6 +995,10 @@ namespace vix::p2p
       transports_.erase(tit);
 
       p.id = new_id;
+
+      if (t)
+        t->set_peer_id(new_id);
+
       peers_.emplace(new_id, std::move(p));
       transports_.emplace(new_id, std::move(t));
     }

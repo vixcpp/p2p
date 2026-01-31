@@ -17,6 +17,8 @@
 #include <span>
 #include <vector>
 #include <string>
+#include <array>
+#include <random>
 
 namespace vix::p2p
 {
@@ -68,16 +70,56 @@ namespace vix::p2p
   class NullCrypto final : public Crypto
   {
   public:
-    KeyPair generate_keypair() override { return {}; }
-
-    std::vector<std::uint8_t> sign(std::span<const std::uint8_t>, std::span<const std::uint8_t>) override
+    KeyPair generate_keypair() override
     {
-      return {};
+      KeyPair kp;
+      kp.public_key.resize(32);
+      kp.private_key.resize(32);
+
+      static thread_local std::mt19937_64 rng{std::random_device{}()};
+
+      auto fill = [&](std::vector<std::uint8_t> &v)
+      {
+        for (size_t i = 0; i < v.size(); ++i)
+          v[i] = static_cast<std::uint8_t>(rng() & 0xFF);
+      };
+
+      fill(kp.public_key);
+      fill(kp.private_key);
+
+      bool all0 = true;
+      for (auto b : kp.public_key)
+      {
+        if (b != 0)
+        {
+          all0 = false;
+          break;
+        }
+      }
+      if (all0)
+        kp.public_key[0] = 1;
+
+      return kp;
     }
 
-    bool verify(std::span<const std::uint8_t>, std::span<const std::uint8_t>, std::span<const std::uint8_t>) override
+    std::vector<std::uint8_t> sign(std::span<const std::uint8_t> data,
+                                   std::span<const std::uint8_t> private_key) override
     {
-      return true;
+      // DEV: signature = kdf_32(data || priv) (non secure)
+      std::vector<std::uint8_t> t;
+      t.reserve(data.size() + private_key.size());
+      t.insert(t.end(), data.begin(), data.end());
+      t.insert(t.end(), private_key.begin(), private_key.end());
+      return kdf_32(t);
+    }
+
+    bool verify(std::span<const std::uint8_t> data,
+                std::span<const std::uint8_t> signature,
+                std::span<const std::uint8_t> public_key) override
+    {
+      (void)data;
+      (void)public_key;
+      return !signature.empty();
     }
 
     std::vector<std::uint8_t> encrypt(std::span<const std::uint8_t> plaintext) override

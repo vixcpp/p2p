@@ -42,6 +42,7 @@ namespace vix::p2p
     virtual void close() = 0;
     virtual TransportStats stats() const = 0;
     virtual std::string endpoint_string() const = 0;
+    virtual void set_peer_id(std::string peer_id) = 0;
   };
 
 } // namespace vix::p2p

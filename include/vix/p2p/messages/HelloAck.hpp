@@ -21,18 +21,22 @@
 
 namespace vix::p2p::msg
 {
-  // HelloAck (B -> A)
+  // HelloAck (responder -> initiator)
   struct HelloAck
   {
     std::uint64_t nonce_a{0}; // echo
     std::uint64_t nonce_b{0}; // challenge
 
+    // NEW: responder public key (needed by initiator to derive session key)
+    std::vector<std::uint8_t> public_key;
+
     std::vector<std::uint8_t> encode() const
     {
       bin::Writer w;
-      w.reserve(24);
+      w.reserve(64);
       w.var_u64(nonce_a);
       w.var_u64(nonce_b);
+      w.bytes_var(public_key);
       return std::move(w.out);
     }
 
@@ -42,6 +46,7 @@ namespace vix::p2p::msg
       HelloAck a;
       a.nonce_a = r.var_u64();
       a.nonce_b = r.var_u64();
+      a.public_key = r.bytes_var();
 
       if (r.remaining() != 0)
         throw bin::Error("HelloAck: trailing bytes");

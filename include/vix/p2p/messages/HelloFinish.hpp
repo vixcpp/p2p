@@ -21,11 +21,12 @@
 
 namespace vix::p2p::msg
 {
-  // HelloFinish (A -> B)
+  // HelloFinish (initiator -> responder)
   struct HelloFinish
   {
     std::uint64_t nonce_a{0};
     std::uint64_t nonce_b{0};
+
     // signature bytes (ed25519 later); for now can be empty in NullCrypto mode
     std::vector<std::uint8_t> signature;
 
