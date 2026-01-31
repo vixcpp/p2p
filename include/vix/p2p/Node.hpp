@@ -58,6 +58,7 @@ namespace vix::p2p
     virtual void start() = 0;
     virtual void stop() = 0;
     virtual bool running() const = 0;
+    virtual void wait() = 0;
 
     virtual bool connect(const PeerEndpoint &ep) = 0;
     virtual void disconnect(const PeerId &peer_id) = 0;
