@@ -115,6 +115,16 @@ namespace vix::p2p
       return "tcp://" + endpoint.host + ":" + std::to_string(endpoint.port);
     }
 
+    void set_peer_id(std::string id)
+    {
+      auto self = shared_from_this();
+      asio::dispatch(strand, [self, id = std::move(id)]() mutable
+                     {
+                   if (self->closed.load())
+                     return;
+                   self->peer_id = std::move(id); });
+    }
+
   private:
     void do_write()
     {
@@ -227,6 +237,12 @@ namespace vix::p2p
     std::string endpoint_string() const override
     {
       return s_ ? s_->endpoint_string() : "tcp://(closed)";
+    }
+
+    void set_peer_id(std::string peer_id) override
+    {
+      if (s_)
+        s_->set_peer_id(std::move(peer_id));
     }
 
   private:

@@ -23,17 +23,20 @@
 
 namespace vix::p2p::msg
 {
-  // Hello = HelloInit (A -> B)
+  // Hello (initiator -> responder)
   struct Hello
   {
     // anti-replay / handshake v2
     std::uint64_t nonce_a{0};
     std::uint64_t ts_ms{0};
+
     // identity
     std::string node_id;
+
     // capabilities
     std::unordered_map<std::string, std::string> capabilities;
-    // crypto
+
+    // crypto: sender public key
     std::vector<std::uint8_t> public_key;
 
     std::vector<std::uint8_t> encode() const
@@ -43,6 +46,7 @@ namespace vix::p2p::msg
       w.var_u64(nonce_a);
       w.var_u64(ts_ms);
       w.str_var(node_id);
+
       w.var_u64((std::uint64_t)capabilities.size());
       for (const auto &[k, v] : capabilities)
       {
