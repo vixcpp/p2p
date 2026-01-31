@@ -44,7 +44,10 @@ namespace vix::p2p
           sock_(ioc_),
           timer_(ioc_) {}
 
-    ~DiscoveryUdp() override { stop(); }
+    ~DiscoveryUdp() override
+    {
+      stop_sync_(); // pas stop()
+    }
 
     void start() override
     {
@@ -63,15 +66,19 @@ namespace vix::p2p
 
     void stop() override
     {
+      stop_sync_();
+    }
+
+    void stop_sync_()
+    {
       if (!running_.exchange(false))
         return;
 
-      asio::post(ioc_, [self = shared_from_this()]()
-                 {
-             (void)self->timer_.cancel();
+      // cancel/close en direct (objet encore vivant ici)
+      (void)timer_.cancel();
 
-             asio::error_code ec;
-             self->sock_.close(ec); });
+      asio::error_code ec;
+      sock_.close(ec);
 
       ioc_.stop();
       if (thr_.joinable())

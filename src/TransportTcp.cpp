@@ -31,6 +31,8 @@ namespace vix::p2p
   struct TcpSession : std::enable_shared_from_this<TcpSession>
   {
     tcp::socket socket;
+
+    asio::strand<asio::any_io_executor> strand;
     PeerId peer_id;
     PeerEndpoint endpoint;
     TransportStats stats{};
@@ -48,20 +50,32 @@ namespace vix::p2p
     EnvelopeHandler on_envelope;
 
     explicit TcpSession(tcp::socket s)
-        : socket(std::move(s)), read_chunk(64 * 1024) {}
+        : socket(std::move(s)),
+          strand(asio::make_strand(socket.get_executor())),
+          read_chunk(64 * 1024)
+    {
+    }
 
-    void start() { do_read(); }
+    void start()
+    {
+      auto self = shared_from_this();
+      asio::dispatch(strand, [self]()
+                     { self->do_read(); });
+    }
 
     void close()
     {
-      if (closed.exchange(true))
-        return;
+      auto self = shared_from_this();
+      asio::dispatch(strand, [self]()
+                     {
+    if (self->closed.exchange(true))
+      return;
 
-      on_envelope = {};
+    self->on_envelope = {};
 
-      asio::error_code ec;
-      socket.shutdown(tcp::socket::shutdown_both, ec);
-      socket.close(ec);
+    asio::error_code ec;
+    self->socket.shutdown(tcp::socket::shutdown_both, ec);
+    self->socket.close(ec); });
     }
 
     void send_frame(std::span<const std::uint8_t> payload)
@@ -69,23 +83,31 @@ namespace vix::p2p
       if (closed.load())
         return;
 
-      auto frame = framer.encode(payload);
+      std::vector<std::uint8_t> copy(payload.begin(), payload.end());
 
-      // backpressure
-      if (write_q.size() >= kMaxQueuedFrames || (queued_bytes + frame.bytes.size()) > kMaxQueuedBytes)
-      {
-        close();
-        return;
-      }
+      auto self = shared_from_this();
+      asio::post(strand, [self, data = std::move(copy)]() mutable
+                 {
+                   if (self->closed.load())
+                     return;
 
-      stats.frames_sent++;
-      stats.bytes_sent += frame.bytes.size();
+                   auto frame = self->framer.encode(data);
 
-      queued_bytes += frame.bytes.size();
-      bool in_progress = !write_q.empty();
-      write_q.push_back(std::move(frame.bytes));
-      if (!in_progress)
-        do_write();
+                   if (self->write_q.size() >= kMaxQueuedFrames ||
+                       (self->queued_bytes + frame.bytes.size()) > kMaxQueuedBytes)
+                   {
+                     self->close();
+                     return;
+                   }
+
+                   self->stats.frames_sent++;
+                   self->stats.bytes_sent += frame.bytes.size();
+
+                   self->queued_bytes += frame.bytes.size();
+                   bool in_progress = !self->write_q.empty();
+                   self->write_q.push_back(std::move(frame.bytes));
+                   if (!in_progress)
+                     self->do_write(); });
     }
 
     std::string endpoint_string() const
