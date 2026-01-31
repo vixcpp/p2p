@@ -758,6 +758,7 @@ namespace vix::p2p
 
       peers_[peer_id].handshake.emplace();
       peers_[peer_id].handshake->nonce_a = h.nonce_a;
+      peers_[peer_id].handshake->ts_ms = h.ts_ms;
       peers_[peer_id].handshake->stage = HandshakeState::Stage::HelloSent;
       peers_[peer_id].handshake->started_at = std::chrono::steady_clock::now();
 
