@@ -22,6 +22,8 @@
 #include <random>
 #include <deque>
 #include <span>
+#include <atomic>
+#include <future>
 
 #include <vix/p2p/Node.hpp>
 #include <vix/p2p/Peer.hpp>
@@ -175,6 +177,18 @@ namespace vix::p2p
     }
 
     bool running() const override { return running_; }
+
+    void wait() override
+    {
+      if (!running_)
+        start();
+
+      if (io_thread_.joinable() && std::this_thread::get_id() == io_thread_.get_id())
+        return;
+
+      if (io_thread_.joinable())
+        io_thread_.join();
+    }
 
     bool connect(const PeerEndpoint &ep) override
     {
