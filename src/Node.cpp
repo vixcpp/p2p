@@ -46,7 +46,22 @@ namespace vix::p2p
 
   using asio::ip::tcp;
 
-  class TcpNode final : public Node
+  static std::mutex g_log_mu;
+  static std::function<void(std::string_view)> g_log_sink = nullptr;
+
+  void set_global_log_sink(std::function<void(std::string_view)> sink)
+  {
+    std::lock_guard<std::mutex> lk(g_log_mu);
+    g_log_sink = std::move(sink);
+  }
+
+  void clear_global_log_sink()
+  {
+    std::lock_guard<std::mutex> lk(g_log_mu);
+    g_log_sink = nullptr;
+  }
+
+  class TcpNode final : public Node, public std::enable_shared_from_this<TcpNode>
   {
   public:
     explicit TcpNode(NodeConfig cfg)
@@ -57,7 +72,18 @@ namespace vix::p2p
           crypto_(std::make_shared<NullCrypto>()),
           ioc_(1) {}
 
-    ~TcpNode() override { stop(); }
+    ~TcpNode() override
+    {
+      // best-effort, sans shared_from_this
+      if (running_)
+      {
+        stopping_ = true;
+        running_ = false;
+        ioc_.stop();
+        if (io_thread_.joinable())
+          io_thread_.join();
+      }
+    }
 
     const NodeConfig &config() const override { return cfg_; }
 
@@ -98,42 +124,50 @@ namespace vix::p2p
     {
       if (!running_)
         return;
+
       stopping_ = true;
       running_ = false;
 
-      if (discovery_)
-        discovery_->stop();
+      if (!io_thread_.joinable())
+        return;
 
-      if (acceptor_)
+      std::promise<void> done;
+      auto fut = done.get_future();
+
+      auto self = shared_from_this();
+      asio::post(ioc_, [self, p = std::move(done)]() mutable
+                 {
+      if (self->discovery_) self->discovery_->stop();
+      if (self->bootstrap_) self->bootstrap_->stop();
+
+      (void)self->heartbeat_.cancel();
+      (void)self->bootstrap_timer_.cancel();
+
+      if (self->acceptor_)
       {
         asio::error_code ec;
-        acceptor_->close(ec);
+        self->acceptor_->close(ec);
       }
 
       std::vector<std::shared_ptr<Transport>> to_close;
-
       {
-        std::scoped_lock lk(mu_);
-        for (auto &[_, t] : transports_)
-          if (t)
-            to_close.push_back(t);
+        std::scoped_lock lk(self->mu_);
+        for (auto &[_, t] : self->transports_)
+          if (t) to_close.push_back(t);
 
-        transports_.clear();
-        peers_.clear();
-        bootstrap_last_connect_.clear();
+        self->transports_.clear();
+        self->peers_.clear();
+        self->bootstrap_last_connect_.clear();
       }
 
       for (auto &t : to_close)
         t->close();
 
-      (void)heartbeat_.cancel();
+      self->ioc_.stop();
+      p.set_value(); });
 
-      if (bootstrap_)
-        bootstrap_->stop();
+      fut.wait();
 
-      (void)bootstrap_timer_.cancel();
-
-      ioc_.stop();
       if (io_thread_.joinable())
         io_thread_.join();
     }
@@ -145,80 +179,119 @@ namespace vix::p2p
       if (!running_)
         start();
 
-      asio::post(ioc_, [this, ep]()
+      auto self = shared_from_this();
+
+      const std::string ep_s = endpoint_str_(ep);
+      self->log_(std::string("[p2p] connect() requested: ") + ep_s);
+
+      asio::post(ioc_, [self, ep, ep_s]()
                  {
-            const PeerId transient_id = ep.host + ":" + std::to_string(ep.port);
+      if (!self->running_ || self->stopping_)
+        return;
 
+      const PeerId transient_id = ep.host + ":" + std::to_string(ep.port);
+
+      {
+        std::scoped_lock lk(self->mu_);
+
+        if (self->has_peer_by_endpoint_unlocked_(ep))
+        {
+          self->log_(std::string("[p2p] connect() deduped: ") + ep_s);
+          return;
+        }
+
+        Peer p;
+        p.id = transient_id;
+        p.state = PeerState::Connecting;
+        p.endpoint = ep;
+        self->peers_[transient_id] = std::move(p);
+      }
+
+      self->log_(std::string("[p2p] connect() dialing: ") + ep_s +
+                " transient_id=" + transient_id);
+
+      EnvelopeHandler on_env = [self](const PeerId &peer_id, const Envelope &env)
+      {
+        if (!self->running_ || self->stopping_)
+          return;
+        self->on_envelope(peer_id, env);
+      };
+
+      TcpFailHandler on_fail = [self, transient_id, ep_s](std::error_code ec)
+      {
+        if (!self->running_)
+          return;
+
+        {
+          std::scoped_lock lk(self->mu_);
+          auto it = self->peers_.find(transient_id);
+          if (it != self->peers_.end() && it->second.state == PeerState::Connecting)
+            it->second.state = PeerState::Closed;
+        }
+
+        self->log_(std::string("[p2p] connect() failed: ") + ep_s +
+                  " transient_id=" + transient_id +
+                  " ec=" + std::to_string(ec.value()));
+      };
+
+      TcpReadyHandler on_ready =
+        [self, transient_id, ep_s](PeerId peer_id,
+                                  PeerEndpoint endpoint,
+                                  std::shared_ptr<Transport> transport)
+      {
+        if (!self->running_ || self->stopping_)
+          return;
+
+        PeerId use_id = peer_id;
+
+        {
+          std::scoped_lock lk(self->mu_);
+
+          if (peer_id != transient_id)
+          {
+            auto pit = self->peers_.find(transient_id);
+            if (pit != self->peers_.end())
             {
-                std::scoped_lock lk(mu_);
-                if (has_peer_by_endpoint_unlocked_(ep))
-                    return;
+              Peer p = pit->second;
+              self->peers_.erase(pit);
 
-                Peer p;
-                p.id = transient_id;
-                p.state = PeerState::Connecting;
-                p.endpoint = ep;
-                peers_[transient_id] = std::move(p);
+              p.id = peer_id;
+              p.endpoint = endpoint;
+              self->peers_[peer_id] = std::move(p);
             }
-
-            EnvelopeHandler on_env = [this](const PeerId &peer_id, const Envelope &env)
+            else
             {
-                on_envelope(peer_id, env);
-            };
+              Peer p;
+              p.id = peer_id;
+              p.state = PeerState::Connecting;
+              p.endpoint = endpoint;
+              self->peers_[peer_id] = std::move(p);
+            }
+          }
+          else
+          {
+            auto it = self->peers_.find(transient_id);
+            if (it != self->peers_.end())
+              it->second.endpoint = endpoint;
+          }
 
-            TcpFailHandler on_fail = [this, transient_id](std::error_code)
-            {
-                std::scoped_lock lk(mu_);
-                auto it = peers_.find(transient_id);
-                if (it != peers_.end() && it->second.state == PeerState::Connecting)
-                    it->second.state = PeerState::Closed;
-            };
+          self->transports_[use_id] = std::move(transport);
+          self->stats_.handshakes_started++;
+        }
 
-            TcpReadyHandler on_ready =
-                [this, transient_id](PeerId peer_id, PeerEndpoint endpoint, std::shared_ptr<Transport> transport)
-            {
-                PeerId use_id = peer_id;
+        self->log_(std::string("[p2p] connect() ready: ") + ep_s +
+                  " transient_id=" + transient_id +
+                  " peer_id=" + use_id);
 
-                {
-                    std::scoped_lock lk(mu_);
+        self->schedule_handshake_timeout_(use_id);
+        self->send_hello(use_id);
+      };
 
-                    if (peer_id != transient_id)
-                    {
-                        auto pit = peers_.find(transient_id);
-                        if (pit != peers_.end())
-                        {
-                            Peer p = pit->second;
-                            peers_.erase(pit);
-
-                            p.id = peer_id;
-                            p.endpoint = endpoint;
-                            peers_[peer_id] = std::move(p);
-                        }
-                        else
-                        {
-                            Peer p;
-                            p.id = peer_id;
-                            p.state = PeerState::Connecting;
-                            p.endpoint = endpoint;
-                            peers_[peer_id] = std::move(p);
-                        }
-                    }
-                    else
-                    {
-                        auto it = peers_.find(transient_id);
-                        if (it != peers_.end() && it->second.endpoint)
-                            it->second.endpoint = endpoint;
-                    }
-
-                    transports_[use_id] = std::move(transport);
-                    stats_.handshakes_started++;
-                }
-
-                schedule_handshake_timeout_(use_id);
-                send_hello(use_id);
-            };
-
-            tcp_connect_async(ioc_, ep, std::move(on_env), std::move(on_ready), std::move(on_fail)); });
+      tcp_connect_async(self->ioc_,
+                        ep,
+                        std::move(on_env),
+                        std::move(on_ready),
+                        std::move(on_fail)); });
 
       return true;
     }
@@ -295,11 +368,16 @@ namespace vix::p2p
       if (!acceptor_)
         return;
 
-      acceptor_->async_accept([this](std::error_code ec, tcp::socket sock)
-                              {
-      if (ec) return;
-      on_inbound_socket(std::move(sock));
-      if (running_) do_accept(); });
+      auto self = shared_from_this();
+      acceptor_->async_accept(
+          [self](std::error_code ec, tcp::socket sock)
+          {
+            if (ec)
+              return;
+            self->on_inbound_socket(std::move(sock));
+            if (self->running_)
+              self->do_accept();
+          });
     }
 
     void disconnect_impl_(const PeerId &peer_id)
@@ -373,70 +451,72 @@ namespace vix::p2p
 
     void schedule_heartbeat_()
     {
-      heartbeat_.expires_after(kPingEvery);
-      heartbeat_.async_wait([this](const std::error_code &ec)
-                            {
-            if (ec) return;
-            if (!running_) return;
+      auto self = shared_from_this();
 
-            const auto now = std::chrono::steady_clock::now();
+      self->heartbeat_.expires_after(kPingEvery);
+      self->heartbeat_.async_wait([self](const std::error_code &ec)
+                                  {
+      if (ec) return;
+      if (!self->running_) return;
 
-            std::vector<PeerId> to_ping;
-            std::vector<PeerId> to_drop;
+      const auto now = std::chrono::steady_clock::now();
 
-            {
-                std::scoped_lock lk(mu_);
-                for (auto &[id, p] : peers_)
-                {
-                    if (p.meta.last_seen.time_since_epoch().count() != 0 &&
-                        (now - p.meta.last_seen) > kStaleAfter)
-                    {
-                        to_drop.push_back(id);
-                        continue;
-                    }
+      std::vector<PeerId> to_ping;
+      std::vector<PeerId> to_drop;
 
-                    if (p.state == PeerState::Connected)
-                        to_ping.push_back(id);
-                }
-            }
+      {
+        std::scoped_lock lk(self->mu_);
+        for (auto &[id, p] : self->peers_)
+        {
+          if (p.meta.last_seen.time_since_epoch().count() != 0 &&
+              (now - p.meta.last_seen) > kStaleAfter)
+          {
+            to_drop.push_back(id);
+            continue;
+          }
 
-            const std::uint64_t nonce =
-                static_cast<std::uint64_t>(
-                  std::chrono::duration_cast<std::chrono::milliseconds>(
-                                            now.time_since_epoch())
-                                            .count());
+          if (p.state == PeerState::Connected)
+            to_ping.push_back(id);
+        }
+      }
 
-            for (auto &id : to_ping)
-                send_ping(id, nonce);
+      const std::uint64_t nonce =
+          static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  now.time_since_epoch())
+                  .count());
 
-            for (auto &id : to_drop)
-                disconnect(id);
+      for (auto &id : to_ping)
+        self->send_ping(id, nonce);
 
-            schedule_heartbeat_(); });
+      for (auto &id : to_drop)
+        self->disconnect(id);
+
+      self->schedule_heartbeat_(); });
     }
 
     void schedule_handshake_timeout_(PeerId id)
     {
+      auto self = shared_from_this();
       auto t = std::make_shared<asio::steady_timer>(ioc_);
       t->expires_after(kHsTimeout);
 
-      t->async_wait([this, id, t](const std::error_code &ec)
+      t->async_wait([self, id, t](const std::error_code &ec)
                     {
-            if (ec) return;
-            if (!running_) return;
+    if (ec) return;
+    if (!self->running_) return;
 
-            bool drop = false;
-            {
-                std::scoped_lock lk(mu_);
-                auto it = peers_.find(id);
-                if (it == peers_.end()) return;
+    bool drop = false;
+    {
+      std::scoped_lock lk(self->mu_);
+      auto it = self->peers_.find(id);
+      if (it == self->peers_.end()) return;
+      if (it->second.state != PeerState::Connected)
+        drop = true;
+    }
 
-                if (it->second.state != PeerState::Connected)
-                    drop = true;
-            }
-
-            if (drop)
-                disconnect(id); });
+    if (drop)
+      self->disconnect(id); });
     }
 
     void on_hello(const PeerId &peer_id, const msg::Hello &h)
@@ -825,6 +905,28 @@ namespace vix::p2p
     static constexpr std::size_t kSeenMax = 4096;
     static constexpr auto kSeenTtl = std::chrono::minutes(2);
 
+    void log_(std::string msg) const
+    {
+      std::cerr << msg << "\n";
+
+      if (cfg_.on_log)
+        cfg_.on_log(std::string_view(msg));
+
+      std::function<void(std::string_view)> sink;
+      {
+        std::lock_guard<std::mutex> lk(g_log_mu);
+        sink = g_log_sink;
+      }
+      if (sink)
+        sink(std::string_view(msg));
+    }
+
+    static std::string endpoint_str_(const PeerEndpoint &ep)
+    {
+      const std::string scheme = ep.scheme.empty() ? "tcp" : ep.scheme;
+      return scheme + "://" + ep.host + ":" + std::to_string((int)ep.port);
+    }
+
     void rekey_peer_unlocked_(const PeerId &old_id, const PeerId &new_id)
     {
       if (old_id == new_id)
@@ -849,57 +951,59 @@ namespace vix::p2p
 
     void schedule_bootstrap_tick_()
     {
-      bootstrap_timer_.expires_after(kBootstrapEvery);
-      bootstrap_timer_.async_wait([this](const std::error_code &ec)
-                                  {
-            if (ec) return;
-            if (!running_) return;
+      auto self = shared_from_this();
 
-            if (bootstrap_)
-            {
-                const auto now = std::chrono::steady_clock::now();
-                auto seeds = bootstrap_->snapshot();
+      self->bootstrap_timer_.expires_after(kBootstrapEvery);
+      self->bootstrap_timer_.async_wait([self](const std::error_code &ec)
+                                        {
+      if (ec) return;
+      if (!self->running_) return;
 
-                std::size_t attempts = 0;
-                for (const auto& s : seeds)
-                {
-                    if (s.tcp_port == 0)
-                        continue;
+      if (self->bootstrap_)
+      {
+        const auto now = std::chrono::steady_clock::now();
+        auto seeds = self->bootstrap_->snapshot();
 
-                    if (!s.transport.empty() && s.transport != "tcp")
-                        continue;
+        std::size_t attempts = 0;
+        for (const auto &s : seeds)
+        {
+          if (s.tcp_port == 0)
+            continue;
 
-                    PeerEndpoint ep;
-                    ep.host = s.host;
-                    ep.port = s.tcp_port;
-                    ep.scheme = "tcp";
+          if (!s.transport.empty() && s.transport != "tcp")
+            continue;
 
-                    if (cfg_.listen_port != 0 &&
-                        ep.port == cfg_.listen_port &&
-                        (ep.host == "127.0.0.1" || ep.host == "localhost"))
-                        continue;
+          PeerEndpoint ep;
+          ep.host = s.host;
+          ep.port = s.tcp_port;
+          ep.scheme = "tcp";
 
-                    {
-                        std::scoped_lock lk(mu_);
+          if (self->cfg_.listen_port != 0 &&
+              ep.port == self->cfg_.listen_port &&
+              (ep.host == "127.0.0.1" || ep.host == "localhost"))
+            continue;
 
-                        if (has_peer_by_endpoint_unlocked_(ep))
-                            continue;
+          {
+            std::scoped_lock lk(self->mu_);
 
-                        if (!bootstrap_cooldown_ok_unlocked_(ep, now))
-                            continue;
+            if (self->has_peer_by_endpoint_unlocked_(ep))
+              continue;
 
-                        mark_bootstrap_attempt_unlocked_(ep, now);
-                    }
+            if (!self->bootstrap_cooldown_ok_unlocked_(ep, now))
+              continue;
 
-                    connect_from_bootstrap_(ep);
-                    attempts++;
+            self->mark_bootstrap_attempt_unlocked_(ep, now);
+          }
 
-                    if (attempts >= 8)
-                        break;
-                }
-            }
+          self->connect_from_bootstrap_(ep);
+          attempts++;
 
-            schedule_bootstrap_tick_(); });
+          if (attempts >= 8)
+            break;
+        }
+      }
+
+      self->schedule_bootstrap_tick_(); });
     }
 
     void connect_from_bootstrap_(const PeerEndpoint &ep)

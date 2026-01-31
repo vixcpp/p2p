@@ -18,6 +18,8 @@
 #include <memory>
 #include <optional>
 #include <cstdint>
+#include <functional>
+#include <string_view>
 
 #include <vix/p2p/Peer.hpp>
 #include <vix/p2p/Discovery.hpp>
@@ -33,6 +35,7 @@ namespace vix::p2p
     std::uint16_t listen_port{0};
     std::uint32_t max_peers{64};
     std::uint32_t handshake_timeout_ms{3000};
+    std::function<void(std::string_view)> on_log = nullptr;
   };
 
   struct NodeStats
@@ -71,6 +74,8 @@ namespace vix::p2p
   };
 
   std::shared_ptr<Node> make_tcp_node(NodeConfig cfg);
+  void set_global_log_sink(std::function<void(std::string_view)> sink);
+  void clear_global_log_sink();
 }
 
 #endif
