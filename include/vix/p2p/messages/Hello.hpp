@@ -3,8 +3,10 @@
  *  @file Hello.hpp
  *  @author Gaspard Kirira
  *
- *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  Copyright 2025, Gaspard Kirira.
+ *  All rights reserved.
  *  https://github.com/vixcpp/vix
+ *
  *  Use of this source code is governed by a MIT license
  *  that can be found in the License file.
  *
@@ -23,31 +25,60 @@
 
 namespace vix::p2p::msg
 {
-  // Hello (initiator -> responder)
+  /**
+   * @brief Handshake hello message (initiator to responder).
+   *
+   * Hello is the first message of the handshake v2 flow.
+   * It carries anti-replay fields, the sender identity, advertised
+   * capabilities, and the sender public key used for establishing
+   * a secure session.
+   */
   struct Hello
   {
-    // anti-replay / handshake v2
+    /**
+     * @brief Initiator nonce used for anti-replay and transcript binding.
+     */
     std::uint64_t nonce_a{0};
+
+    /**
+     * @brief Timestamp in milliseconds used for freshness checks.
+     */
     std::uint64_t ts_ms{0};
 
-    // identity
+    /**
+     * @brief Sender node identifier.
+     */
     std::string node_id;
 
-    // capabilities
+    /**
+     * @brief Advertised protocol features and capabilities.
+     */
     std::unordered_map<std::string, std::string> capabilities;
 
-    // crypto: sender public key
+    /**
+     * @brief Sender public key bytes.
+     */
     std::vector<std::uint8_t> public_key;
 
+    /**
+     * @brief Encode the message into binary wire format.
+     *
+     * Encoding order:
+     *   nonce_a(var_u64) | ts_ms(var_u64) | node_id(str_var)
+     *   | cap_count(var_u64) | (k(str_var), v(str_var))* | public_key(bytes_var)
+     *
+     * @return Encoded bytes.
+     */
     std::vector<std::uint8_t> encode() const
     {
       bin::Writer w;
       w.reserve(96);
+
       w.var_u64(nonce_a);
       w.var_u64(ts_ms);
       w.str_var(node_id);
 
-      w.var_u64((std::uint64_t)capabilities.size());
+      w.var_u64(static_cast<std::uint64_t>(capabilities.size()));
       for (const auto &[k, v] : capabilities)
       {
         w.str_var(k);
@@ -58,6 +89,14 @@ namespace vix::p2p::msg
       return std::move(w.out);
     }
 
+    /**
+     * @brief Decode a Hello message from binary wire bytes.
+     *
+     * @param bytes Input bytes.
+     * @return Decoded Hello message.
+     *
+     * @throws bin::Error if the input is malformed or contains trailing bytes.
+     */
     static Hello decode_or_throw(std::span<const std::uint8_t> bytes)
     {
       bin::Reader r(bytes);
@@ -67,7 +106,7 @@ namespace vix::p2p::msg
       h.ts_ms = r.var_u64();
       h.node_id = r.str_var();
 
-      auto n = (std::size_t)r.var_u64();
+      const auto n = static_cast<std::size_t>(r.var_u64());
       for (std::size_t i = 0; i < n; ++i)
       {
         auto k = r.str_var();
@@ -79,9 +118,11 @@ namespace vix::p2p::msg
 
       if (r.remaining() != 0)
         throw bin::Error("Hello: trailing bytes");
+
       return h;
     }
   };
+
 } // namespace vix::p2p::msg
 
-#endif
+#endif // VIX_HELLO_HPP

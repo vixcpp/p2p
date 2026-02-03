@@ -3,8 +3,10 @@
  *  @file Dispatch.hpp
  *  @author Gaspard Kirira
  *
- *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  Copyright 2025, Gaspard Kirira.
+ *  All rights reserved.
  *  https://github.com/vixcpp/vix
+ *
  *  Use of this source code is governed by a MIT license
  *  that can be found in the License file.
  *
@@ -29,6 +31,12 @@
 
 namespace vix::p2p::msg
 {
+  /**
+   * @brief Variant holding any supported P2P message payload.
+   *
+   * This type is the canonical runtime representation for decoded
+   * protocol messages after dispatch.
+   */
   using AnyMessage = std::variant<
       Hello,
       HelloAck,
@@ -39,7 +47,22 @@ namespace vix::p2p::msg
       WalAck,
       OutboxPull>;
 
-  inline AnyMessage decode_payload_or_throw(MessageType type, std::span<const std::uint8_t> payload)
+  /**
+   * @brief Decode a message payload according to its protocol type.
+   *
+   * The function selects the appropriate message decoder based on
+   * the provided MessageType and decodes the raw payload bytes into
+   * a strongly-typed message structure.
+   *
+   * @param type Protocol message type.
+   * @param payload Raw payload bytes.
+   * @return Decoded message wrapped in AnyMessage.
+   *
+   * @throws bin::Error if the message type is unknown or decoding fails.
+   */
+  inline AnyMessage decode_payload_or_throw(
+      MessageType type,
+      std::span<const std::uint8_t> payload)
   {
     switch (type)
     {
@@ -65,8 +88,10 @@ namespace vix::p2p::msg
     default:
       break;
     }
+
     throw bin::Error("Dispatch: unknown message type");
   }
+
 } // namespace vix::p2p::msg
 
-#endif
+#endif // VIX_DISPATCH_HPP
