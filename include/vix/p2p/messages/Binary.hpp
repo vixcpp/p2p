@@ -95,7 +95,12 @@ namespace vix::p2p::bin
     std::uint16_t u16_le()
     {
       require(2);
-      std::uint16_t v = (std::uint16_t)s[off] | ((std::uint16_t)s[off + 1] << 8);
+
+      const std::uint16_t b0 = static_cast<std::uint16_t>(s[off]);
+      const std::uint16_t b1 = static_cast<std::uint16_t>(s[off + 1]);
+
+      const std::uint16_t v = static_cast<std::uint16_t>(b0 | static_cast<std::uint16_t>(b1 << 8));
+
       off += 2;
       return v;
     }
