@@ -136,6 +136,17 @@ function(vix_p2p_link_asio onto link_scope)
   )
 endfunction()
 
+function(vix_p2p_apply_asio_common onto link_scope)
+  target_compile_definitions(${onto} ${link_scope} ASIO_STANDALONE=1)
+
+  if (WIN32)
+    target_compile_definitions(${onto} ${link_scope} _WIN32_WINNT=0x0A00)
+  endif()
+
+  if (UNIX AND NOT APPLE)
+    target_link_libraries(${onto} ${link_scope} pthread)
+  endif()
+endfunction()
 
 # Global settings
 set(CMAKE_CXX_STANDARD 20)
@@ -440,7 +451,8 @@ target_include_directories(vix_p2p
 
   # Required
   target_link_libraries(vix_p2p PUBLIC ${VIX_NET_TARGET})
-vix_p2p_link_asio(vix_p2p PUBLIC)
+  vix_p2p_link_asio(vix_p2p PUBLIC)
+  vix_p2p_apply_asio_common(vix_p2p PUBLIC)
 
   # Optional deps
   vix_p2p_try_link_utils(vix_p2p PUBLIC)
@@ -490,7 +502,8 @@ else()
 )
 
   target_link_libraries(vix_p2p INTERFACE ${VIX_NET_TARGET})
-vix_p2p_link_asio(vix_p2p INTERFACE)
+  vix_p2p_link_asio(vix_p2p INTERFACE)
+  vix_p2p_apply_asio_common(vix_p2p INTERFACE)
 
   vix_p2p_try_link_utils(vix_p2p INTERFACE)
   vix_p2p_try_link_sync(vix_p2p INTERFACE)
