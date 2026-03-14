@@ -1,0 +1,29 @@
+{
+  "name": "p2p",
+  "namespace": "vix",
+  "version": "0.9.0",
+  "type": "header-and-source",
+  "include": "include",
+  "src": "src",
+  "license": "MIT",
+  "description": "Peer-to-peer networking module for Vix.cpp: node discovery, messaging, routing, edge synchronization, and transport protocols.",
+  "keywords": [
+    "cpp",
+    "vix",
+    "p2p",
+    "peer-to-peer",
+    "network",
+    "discovery",
+    "edge-sync",
+    "messaging",
+    "routing",
+    "transport"
+  ],
+  "repository": "https://github.com/vixcpp/p2p",
+  "authors": [
+    {
+      "name": "Gaspard Kirira",
+      "github": "Gaspardkirira"
+    }
+  ]
+}
