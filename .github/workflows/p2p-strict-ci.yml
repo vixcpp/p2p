@@ -73,7 +73,18 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y $DEPS
+
+      - name: Prepare Asio layout for p2p
+        run: |
+          set -e
           test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
+          mkdir -p third_party/asio/include
+          cp -r /usr/include/asio* third_party/asio/include/ || true
+          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
+          echo "---- prepared asio layout ----"
+          ls -la third_party || true
+          ls -la third_party/asio || true
+          ls -la third_party/asio/include || true
 
       - name: Fetch sibling dependencies
         run: |
@@ -84,6 +95,13 @@ jobs:
           git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/sync.git ../sync || true
           git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/cache.git ../cache || true
           git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json || true
+
+          echo "---- sibling dependencies ----"
+          ls -la ../net || true
+          ls -la ../utils || true
+          ls -la ../sync || true
+          ls -la ../cache || true
+          ls -la ../json || true
 
       - name: Verify required sibling dependencies
         run: |
@@ -169,7 +187,14 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y $DEPS
+
+      - name: Prepare Asio layout for p2p
+        run: |
+          set -e
           test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
+          mkdir -p third_party/asio/include
+          cp -r /usr/include/asio* third_party/asio/include/ || true
+          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
 
       - name: Fetch sibling dependencies
         run: |
@@ -281,7 +306,14 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y $DEPS
+
+      - name: Prepare Asio layout for p2p
+        run: |
+          set -e
           test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
+          mkdir -p third_party/asio/include
+          cp -r /usr/include/asio* third_party/asio/include/ || true
+          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
 
       - name: Fetch sibling dependencies
         run: |
@@ -377,7 +409,14 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y $DEPS
+
+      - name: Prepare Asio layout for p2p
+        run: |
+          set -e
           test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
+          mkdir -p third_party/asio/include
+          cp -r /usr/include/asio* third_party/asio/include/ || true
+          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
 
       - name: Fetch sibling dependencies
         run: |
@@ -487,7 +526,14 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y $DEPS
+
+      - name: Prepare Asio layout for p2p
+        run: |
+          set -e
           test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
+          mkdir -p third_party/asio/include
+          cp -r /usr/include/asio* third_party/asio/include/ || true
+          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
 
       - name: Configure installable standalone build
         run: |
@@ -529,7 +575,14 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y $DEPS
+
+      - name: Prepare Asio layout for p2p
+        run: |
+          set -e
           test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
+          mkdir -p third_party/asio/include
+          cp -r /usr/include/asio* third_party/asio/include/ || true
+          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
 
       - name: Fetch sibling dependencies
         run: |
@@ -540,6 +593,28 @@ jobs:
           git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/sync.git ../sync || true
           git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/cache.git ../cache || true
           git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json || true
+
+      - name: Verify required sibling dependencies
+        run: |
+          test -f ../net/CMakeLists.txt || (echo "::error::../net/CMakeLists.txt is missing"; exit 1)
+
+      - name: Export dependency include paths
+        run: |
+          EXTRA_PATHS="$GITHUB_WORKSPACE/../net/include"
+          if [ -d "$GITHUB_WORKSPACE/../utils/include" ]; then
+            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../utils/include"
+          fi
+          if [ -d "$GITHUB_WORKSPACE/../sync/include" ]; then
+            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../sync/include"
+          fi
+          if [ -d "$GITHUB_WORKSPACE/../cache/include" ]; then
+            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../cache/include"
+          fi
+          if [ -d "$GITHUB_WORKSPACE/../json/include" ]; then
+            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../json/include"
+          fi
+          echo "CPATH=$EXTRA_PATHS${CPATH:+:$CPATH}" >> "$GITHUB_ENV"
+          echo "CPLUS_INCLUDE_PATH=$EXTRA_PATHS${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}" >> "$GITHUB_ENV"
 
       - name: Configure release mode with sibling deps
         run: |
