@@ -1,176 +1,311 @@
-# ⚡ Vix.cpp — P2P Module
+# vix/p2p
 
-High-performance **peer-to-peer & edge networking module** for **Vix.cpp**.  
-Designed for **offline-first systems**, **unstable networks**, and **secure distributed runtimes**.
+Peer-to-peer engine for Vix.cpp
 
-This module powers Vix’s **sync engine (WAL / outbox)** and forms the **transport backbone** of the ecosystem.
-
----
-
-## ✨ What this module provides
-
-✅ TCP peer connections  
-✅ Secure handshake lifecycle  
-✅ Per-peer session state  
-✅ Peer discovery (UDP broadcast / multicast)  
-✅ HTTP bootstrap (registry pull / announce)  
-✅ Runtime peer & handshake statistics  
-✅ Clean shutdown & signal handling  
-✅ Modular, production-shaped architecture  
-
-This is **not** a toy P2P example.
+**Durable. Offline-first. Deterministic.**
 
 ---
 
-## 📂 Repository layout
+## Overview
+
+vix/p2p is the networking layer of Vix.cpp.
+
+It provides everything needed to build a real-world distributed system:
+
+- peer discovery (LAN + registry)
+- secure handshake
+- message framing
+- transport abstraction
+- WAL replication
+- offline-first sync
+
+Designed for unreliable networks. Built for the real world.
+
+---
+
+## Core Philosophy
+
+- Local-first → nodes work without network
+- Eventually consistent → sync happens later
+- Deterministic → same inputs → same state
+- Transport-agnostic → TCP, QUIC, future-ready
+- Failure-tolerant → restart-safe, replay-safe
+
+---
+
+## Architecture
+
+```text
+Discovery  → finds peers (UDP / registry)
+Transport  → sends frames (TCP / QUIC)
+Framing    → splits byte streams into messages
+Envelope   → protocol-level message container
+Dispatch   → routes message types
+EdgeSync   → WAL replication + outbox
+Router     → optional multi-hop routing
+```
+
+---
+
+## Protocol Layers
+
+### 1. Framing
+
+```cpp
+Frame encode(payload);
+FrameDecodeResult decode(buffer);
+```
+
+Example:
+
+LengthPrefixVarint → compact framing using varint length
+
+---
+
+### 2. Envelope
+
+Every message is wrapped in an envelope:
 
 ```
-modules/p2p/
-├── include/            # Public P2P API (Node, Peer, Protocol, Crypto, …)
-├── src/                # Implementation
-├── tests/
-│   ├── manual/         # Manual integration tests
-│   │   ├── main.cpp    # p2p_demo (real runtime demo)
-│   │   └── registry.py # HTTP bootstrap registry (test server)
-│   └── CMakeLists.txt
-├── build/              # Build output
-│   └── tests/
-│       └── p2p_demo    # Compiled demo binary
-├── CMakeLists.txt
-├── README.md
-├── CHANGELOG.md
-└── LICENSE
+magic | version | type | msg_id | flags | [crypto] | payload
+```
+
+Features:
+
+- versioning
+- encryption (AEAD)
+- message tracking
+- compatibility checks
+
+---
+
+### 3. Messages
+
+Supported message types:
+
+- Hello
+- HelloAck
+- HelloFinish
+
+- Ping
+- Pong
+
+- WalPush
+- WalAck
+- OutboxPull
+
+---
+
+### 4. Dispatch
+
+```cpp
+AnyMessage decode_payload_or_throw(type, payload);
+```
+
+Maps raw payload → typed message (std::variant)
+
+---
+
+### 5. Sync (EdgeSync)
+
+- WalPush → send WAL batch
+- WalAck → confirm apply
+- OutboxPull → request pending ops
+
+Core of offline-first replication.
+
+---
+
+## Quick Start
+
+### Basic message roundtrip
+```bash
+vix run examples/p2p/01_envelope_and_framing_basic.cpp
+```
+
+### Handshake messages
+```bash
+vix run examples/p2p/02_hello_handshake_messages.cpp
+```
+
+### Discovery JSON
+```bash
+vix run examples/p2p/03_discovery_announce_json.cpp
+```
+
+### Router
+```bash
+vix run examples/p2p/04_router_memory_basic.cpp
+```
+
+### Secure envelope
+```bash
+vix run examples/p2p/05_pack_secure_envelope.cpp
+```
+
+### Dispatch
+```bash
+vix run examples/p2p/06_dispatch_decode_basic.cpp
+```
+
+### WAL sync
+```bash
+vix run examples/p2p/07_wal_push_and_ack.cpp
 ```
 
 ---
 
-## 🧪 Demo: `p2p_demo`
+## Runtime Examples
 
-The **real executable demo** lives here after build:
+⚠️ Important rule with vix run:
+
+- `--` = compiler flags
+- `--run` = runtime arguments (argv)
+
+### Manual connect (TCP)
+
+Terminal 1:
+```bash
+vix run examples/p2p/08_runtime_manual_connect.cpp --run server
+```
+
+Terminal 2:
+```bash
+vix run examples/p2p/08_runtime_manual_connect.cpp --run client 127.0.0.1 9101
+```
+
+---
+
+### UDP Discovery (LAN)
+
+Terminal 1:
+```bash
+vix run examples/p2p/09_udp_discovery_basic.cpp --run node-a 9201
+```
+
+Terminal 2:
+```bash
+vix run examples/p2p/09_udp_discovery_basic.cpp --run node-b 9202
+```
+
+---
+
+### HTTP Bootstrap (Registry)
+
+Start a registry returning:
+
+```json
+{
+  "peers": [
+    { "host": "127.0.0.1", "tcp_port": 9301, "node_id": "node-x" }
+  ]
+}
+```
+
+Run:
+```bash
+vix run examples/p2p/10_bootstrap_http_basic.cpp --run http://127.0.0.1:8080/peers
+```
+
+---
+
+## CLI Alternative (Recommended)
+
+Instead of writing code, you can directly run a node:
 
 ```bash
-cmake -S . -B build -DVIX_P2P_BUILD_TESTS=ON
-cmake --build build -j
-build/tests/p2p_demo
+vix p2p --id A --listen 9001
 ```
 
-It spins up a full P2P node with:
-- listening socket
-- optional outbound connections
-- discovery
-- bootstrap
-- live stats
+Connect:
 
----
-
-## 🚀 Run the demo
-
-### Terminal A
 ```bash
-./build/tests/p2p_demo --id A --listen 9001
+vix p2p --id B --listen 9002 --connect 127.0.0.1:9001
 ```
 
-### Terminal B
-```bash
-./build/tests/p2p_demo --id B --listen 9002 --connect 127.0.0.1:9001
-```
+This uses the same engine internally.
 
-### Delayed connect (handshake timeout test)
-```bash
-./build/tests/p2p_demo \
-  --id B \
-  --listen 9002 \
-  --connect 127.0.0.1:9001 \
-  --connect-delay 8000
-```
+---
 
-### Auto stop after 20 seconds
-```bash
-./build/tests/p2p_demo --id A --listen 9001 --run 20
+## Key Concepts
+
+### Message Flow
+
+```
+encode(message)
+→ envelope
+→ framing
+→ transport
+→ network
+→ decode
+→ dispatch
 ```
 
 ---
 
-## 📊 Runtime statistics
-
-Printed periodically while running:
+### Handshake (v2)
 
 ```
-peers_total=2
-peers_connected=1
-handshakes_started=1
-handshakes_completed=1
+A → Hello
+B → HelloAck
+A → HelloFinish
 ```
 
-Final stats are always printed on exit.
+After that:
+
+- session key established
+- encryption enabled
+- peer becomes "Connected"
 
 ---
 
-## 🌐 Discovery & Bootstrap (optional)
-
-### UDP discovery
-```bash
---discovery on
---disc-mode broadcast | multicast
---disc-port 37020
-```
-
-### HTTP bootstrap registry
-```bash
---bootstrap on
---registry http://127.0.0.1:8080/p2p/v1
---announce on
-```
-
-A minimal test registry is provided in:
+### Offline Sync
 
 ```
-tests/manual/registry.py
+local write → WAL
+WAL → WalPush
+peer → WalAck
+retry until convergence
 ```
 
 ---
 
-## 🔐 Security model (high-level)
+## Why it exists
 
-- Explicit handshake state machine  
-- Per-peer session lifecycle  
-- Control messages remain plaintext (safe bootstrapping)  
-- Designed for AEAD encrypted payloads  
-- Ready for secure WAL / sync traffic  
+Real systems fail:
 
----
+- network drops
+- partial writes
+- restarts
+- duplicates
 
-## 🎯 Who this is for
+Traditional systems:
 
-- C++ backend engineers  
-- Distributed systems developers  
-- Offline-first / local-first builders  
-- Edge & P2P networking enthusiasts  
-- Anyone who wants **real** P2P, not fake examples  
+- lose data
+- become inconsistent
 
----
+Vix P2P ensures:
 
-## ⭐ Why star this module?
-
-- Clean **production-oriented P2P design**
-- Minimal but **realistic**
-- Built for **unstable networks**
-- Reusable as a base for:
-  - sync engines
-  - mesh networks
-  - decentralized runtimes
-- Actively used inside **Vix.cpp**
+> No data is lost. Ever.
+> Sync happens later. Safely.
 
 ---
 
-## 🧭 Status
+## Summary
 
-✔️ Actively developed  
-✔️ Manually tested  
-✔️ Used internally  
-🚧 Continuously evolving  
+vix/p2p is not just networking.
+
+It is:
+
+- a sync protocol
+- a replication engine
+- a failure recovery system
+- a foundation for distributed apps
 
 ---
 
-If this module helped you understand **how real P2P in C++ should look**,  
-**leave a ⭐ it genuinely helps the project grow.**
+## License
+
+MIT License
+Copyright (c) 2025 Gaspard Kirira
+
