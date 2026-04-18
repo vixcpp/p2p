@@ -437,7 +437,7 @@ if (P2P_SOURCES)
   add_library(vix_p2p STATIC ${P2P_SOURCES})
 
   if (TARGET vix_warnings)
-    target_link_libraries(vix_p2p PUBLIC vix_warnings)
+    target_link_libraries(vix_p2p PRIVATE vix_warnings)
   endif()
 
   add_library(vix::p2p ALIAS vix_p2p)
@@ -462,7 +462,7 @@ target_include_directories(vix_p2p
   vix_p2p_try_link_ssl(vix_p2p PUBLIC)
 
   if (VIX_ENABLE_SANITIZERS AND TARGET vix_sanitizers)
-    target_link_libraries(vix_p2p PUBLIC vix_sanitizers)
+    target_link_libraries(vix_p2p PRIVATE vix_sanitizers)
   endif()
 
   set_target_properties(vix_p2p PROPERTIES
@@ -490,10 +490,6 @@ else()
   add_library(vix_p2p INTERFACE)
   add_library(vix::p2p ALIAS vix_p2p)
 
-  if (TARGET vix_warnings)
-    target_link_libraries(vix_p2p INTERFACE vix_warnings)
-  endif()
-
   target_compile_features(vix_p2p INTERFACE cxx_std_20)
 
  target_include_directories(vix_p2p INTERFACE
@@ -510,10 +506,6 @@ else()
   vix_p2p_try_link_cache(vix_p2p INTERFACE)
   vix_p2p_try_link_json(vix_p2p INTERFACE)
   vix_p2p_try_link_ssl(vix_p2p INTERFACE)
-
-  if (VIX_ENABLE_SANITIZERS AND TARGET vix_sanitizers)
-    target_link_libraries(vix_p2p INTERFACE vix_sanitizers)
-  endif()
 
   install(TARGETS vix_p2p
     EXPORT VixTargets
