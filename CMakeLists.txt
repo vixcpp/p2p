@@ -48,10 +48,16 @@ function(vix_p2p_link_asio onto link_scope)
   # -------------------------
   if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
     if (TARGET vix::thirdparty_asio)
-      target_link_libraries(${onto} ${link_scope} vix::thirdparty_asio)
+      get_target_property(_asio_inc vix::thirdparty_asio INTERFACE_INCLUDE_DIRECTORIES)
+      if (NOT _asio_inc)
+        message(FATAL_ERROR "[p2p] Umbrella build: vix::thirdparty_asio has no INTERFACE_INCLUDE_DIRECTORIES.")
+      endif()
+
+      target_include_directories(${onto} SYSTEM ${link_scope} ${_asio_inc})
       target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
       return()
     endif()
+
     message(FATAL_ERROR "[p2p] Umbrella build: vix::thirdparty_asio must be provided by umbrella.")
   endif()
 
@@ -59,7 +65,6 @@ function(vix_p2p_link_asio onto link_scope)
   # Standalone mode
   # -------------------------
 
-  # Helper: walk up from a start dir and find asio.hpp under a relative path.
   function(_vix_find_asio_upwards out_dir start_dir rel_path)
     set(_cur "${start_dir}")
     set(_found "")
@@ -80,15 +85,16 @@ function(vix_p2p_link_asio onto link_scope)
     set(${out_dir} "${_found}" PARENT_SCOPE)
   endfunction()
 
-  # 1) module-local (when p2p repo vendors its own Asio)
   set(_asio_local_p2p   "${CMAKE_CURRENT_LIST_DIR}/third_party/asio/include")
-  set(_asio_local_http  "${CMAKE_SOURCE_DIR}/third_party/asio/include") # if configuring from p2p_http root
+  set(_asio_local_http  "${CMAKE_SOURCE_DIR}/third_party/asio/include")
+
   if (EXISTS "${_asio_local_p2p}/asio.hpp")
     target_include_directories(${onto} SYSTEM ${link_scope} "${_asio_local_p2p}")
     target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
     message(STATUS "[p2p] Asio: using module-local Asio at ${_asio_local_p2p}")
     return()
   endif()
+
   if (EXISTS "${_asio_local_http}/asio.hpp")
     target_include_directories(${onto} SYSTEM ${link_scope} "${_asio_local_http}")
     target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
@@ -96,7 +102,6 @@ function(vix_p2p_link_asio onto link_scope)
     return()
   endif()
 
-  # 2) umbrella repo layout: third_party/asio-src/asio/include
   set(_asio_up "")
   _vix_find_asio_upwards(_asio_up "${CMAKE_CURRENT_LIST_DIR}" "third_party/asio-src/asio/include")
   if (_asio_up STREQUAL "")
@@ -110,7 +115,6 @@ function(vix_p2p_link_asio onto link_scope)
     return()
   endif()
 
-  # 3) legacy layout: third_party/asio/include
   set(_asio_up_legacy "")
   _vix_find_asio_upwards(_asio_up_legacy "${CMAKE_CURRENT_LIST_DIR}" "third_party/asio/include")
   if (_asio_up_legacy STREQUAL "")
