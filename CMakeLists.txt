@@ -465,8 +465,8 @@ target_include_directories(vix_p2p
 
   # Required
   target_link_libraries(vix_p2p PUBLIC ${VIX_NET_TARGET})
-  vix_p2p_link_asio(vix_p2p PUBLIC)
-  vix_p2p_apply_asio_common(vix_p2p PUBLIC)
+  vix_p2p_link_asio(vix_p2p PRIVATE)
+  vix_p2p_apply_asio_common(vix_p2p PRIVATE)
 
   # Optional deps
   vix_p2p_try_link_utils(vix_p2p PUBLIC)
