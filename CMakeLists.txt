@@ -436,9 +436,23 @@ if (P2P_SOURCES)
 
   add_library(vix_p2p STATIC ${P2P_SOURCES})
 
-  if (TARGET vix_warnings)
-    target_link_libraries(vix_p2p PRIVATE vix_warnings)
-  endif()
+if (NOT MSVC)
+  target_compile_options(vix_p2p PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+  )
+endif()
+
+if (VIX_ENABLE_SANITIZERS AND NOT MSVC)
+  target_compile_options(vix_p2p PRIVATE
+    -fno-omit-frame-pointer
+    -fsanitize=address,undefined
+  )
+  target_link_options(vix_p2p PRIVATE
+    -fsanitize=address,undefined
+  )
+endif()
 
   add_library(vix::p2p ALIAS vix_p2p)
   target_compile_features(vix_p2p PUBLIC cxx_std_20)
@@ -460,10 +474,6 @@ target_include_directories(vix_p2p
   vix_p2p_try_link_cache(vix_p2p PUBLIC)
   vix_p2p_try_link_json(vix_p2p PUBLIC)
   vix_p2p_try_link_ssl(vix_p2p PUBLIC)
-
-  if (VIX_ENABLE_SANITIZERS AND TARGET vix_sanitizers)
-    target_link_libraries(vix_p2p PRIVATE vix_sanitizers)
-  endif()
 
   set_target_properties(vix_p2p PROPERTIES
     OUTPUT_NAME vix_p2p
