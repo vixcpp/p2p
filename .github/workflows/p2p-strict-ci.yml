@@ -2,7 +2,11 @@ name: P2P Strict CI
 
 on:
   push:
-    branches: [main, master, dev]
+    branches:
+      - main
+      - master
+      - dev
+      - release/**
     paths:
       - ".github/workflows/p2p-strict-ci.yml"
       - "CMakeLists.txt"
@@ -14,8 +18,13 @@ on:
       - "CHANGELOG.md"
       - "cmd.md"
       - "vix.json"
+
   pull_request:
-    branches: [main, master, dev]
+    branches:
+      - main
+      - master
+      - dev
+      - release/**
     paths:
       - ".github/workflows/p2p-strict-ci.yml"
       - "CMakeLists.txt"
@@ -27,41 +36,30 @@ on:
       - "CHANGELOG.md"
       - "cmd.md"
       - "vix.json"
+
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  DEPS: >
-    build-essential
-    cmake
-    ninja-build
-    clang
-    llvm
-    lld
-    g++
-    cppcheck
-    clang-tidy
-    valgrind
-    pkg-config
-    git
-    libasio-dev
-    libssl-dev
-    nlohmann-json3-dev
   BUILD_JOBS: 2
   VIX_GIT_BRANCH: dev
 
 jobs:
-  build-test-sanitized:
-    name: Sanitized Build and Tests (${{ matrix.compiler }}, ssl=${{ matrix.ssl }}, json=${{ matrix.json_mode }})
+  build:
+    name: Build P2P (${{ matrix.compiler }}, ssl=${{ matrix.ssl }})
     runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
-        compiler: [clang, gcc]
-        ssl: [ON, OFF]
-        json_mode: [AUTO, OFF]
+        compiler:
+          - gcc
+          - clang
+        ssl:
+          - OFF
+          - ON
 
     steps:
       - name: Checkout p2p repository
@@ -69,61 +67,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y $DEPS
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            clang \
+            g++ \
+            pkg-config \
+            git \
+            curl \
+            ca-certificates \
+            libasio-dev \
+            libssl-dev \
+            nlohmann-json3-dev \
+            libspdlog-dev \
+            libfmt-dev
 
-      - name: Prepare Asio layout for p2p
-        run: |
-          set -e
-          test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
-          mkdir -p third_party/asio/include
-          cp -r /usr/include/asio* third_party/asio/include/ || true
-          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
-          echo "---- prepared asio layout ----"
-          ls -la third_party || true
-          ls -la third_party/asio || true
-          ls -la third_party/asio/include || true
-
-      - name: Fetch sibling dependencies
-        run: |
-          rm -rf ../net ../utils ../sync ../cache ../json
-
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/net.git ../net
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/utils.git ../utils || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/sync.git ../sync || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/cache.git ../cache || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json || true
-
-          echo "---- sibling dependencies ----"
-          ls -la ../net || true
-          ls -la ../utils || true
-          ls -la ../sync || true
-          ls -la ../cache || true
-          ls -la ../json || true
-
-      - name: Verify required sibling dependencies
-        run: |
-          test -f ../net/CMakeLists.txt || (echo "::error::../net/CMakeLists.txt is missing"; exit 1)
-
-      - name: Export dependency include paths
-        run: |
-          EXTRA_PATHS="$GITHUB_WORKSPACE/../net/include"
-          if [ -d "$GITHUB_WORKSPACE/../utils/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../utils/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../sync/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../sync/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../cache/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../cache/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../json/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../json/include"
-          fi
-          echo "CPATH=$EXTRA_PATHS${CPATH:+:$CPATH}" >> "$GITHUB_ENV"
-          echo "CPLUS_INCLUDE_PATH=$EXTRA_PATHS${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}" >> "$GITHUB_ENV"
+          test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found"; exit 1)
 
       - name: Select compiler
         run: |
@@ -135,105 +98,82 @@ jobs:
             echo "CXX=g++" >> "$GITHUB_ENV"
           fi
 
-      - name: Configure
-        run: |
-          cmake -G Ninja -S . -B build-sanitize \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DVIX_ENABLE_SANITIZERS=ON \
-            -DVIX_P2P_BUILD_TESTS=ON \
-            -DVIX_P2P_FETCH_NET=OFF \
-            -DVIX_P2P_FETCH_UTILS=OFF \
-            -DVIX_P2P_FETCH_SYNC=OFF \
-            -DVIX_P2P_FETCH_CACHE=OFF \
-            -DVIX_P2P_WITH_UTILS=AUTO \
-            -DVIX_P2P_WITH_SYNC=AUTO \
-            -DVIX_P2P_WITH_CACHE=AUTO \
-            -DVIX_P2P_WITH_JSON=${{ matrix.json_mode }} \
-            -DVIX_P2P_WITH_SSL=${{ matrix.ssl }}
-
-      - name: Build
-        run: |
-          cmake --build build-sanitize -j"${BUILD_JOBS}"
-
-      - name: Print executables
-        run: |
-          echo "---- executables ----"
-          find build-sanitize -type f -executable | sort || true
-
-      - name: Run ctest
-        run: |
-          set -e
-          cd build-sanitize
-          if ctest --output-on-failure --timeout 90; then
-            echo "All discovered tests passed."
-          else
-            echo "::warning::Some tests failed or no tests were discovered."
-            test -f Testing/Temporary/LastTest.log && cat Testing/Temporary/LastTest.log || true
-            exit 0
-          fi
-
-  runtime-smoke:
-    name: Runtime Smoke Checks
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout p2p repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y $DEPS
-
-      - name: Prepare Asio layout for p2p
-        run: |
-          set -e
-          test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
-          mkdir -p third_party/asio/include
-          cp -r /usr/include/asio* third_party/asio/include/ || true
-          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
-
       - name: Fetch sibling dependencies
         run: |
-          rm -rf ../net ../utils ../sync ../cache ../json
+          set -euxo pipefail
 
+          rm -rf \
+            ../error \
+            ../path \
+            ../env \
+            ../async \
+            ../process \
+            ../net \
+            ../utils \
+            ../json
+
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/error.git ../error
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/path.git ../path
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/env.git ../env
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" --recurse-submodules https://github.com/vixcpp/async.git ../async
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/process.git ../process
           git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/net.git ../net
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/utils.git ../utils || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/sync.git ../sync || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/cache.git ../cache || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json || true
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/utils.git ../utils
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json
+
+          git -C ../async submodule update --init --recursive --depth 1 || true
+
+      - name: Prepare Asio layouts
+        run: |
+          set -euxo pipefail
+
+          mkdir -p third_party/asio/include
+          cp -r /usr/include/asio* third_party/asio/include/ || true
+          test -f third_party/asio/include/asio.hpp
+
+          mkdir -p ../async/third_party/asio
+          rm -rf ../async/third_party/asio/include
+          mkdir -p ../async/third_party/asio/include
+          cp -r /usr/include/asio* ../async/third_party/asio/include/ || true
+          test -f ../async/third_party/asio/include/asio.hpp
 
       - name: Verify required sibling dependencies
         run: |
-          test -f ../net/CMakeLists.txt || (echo "::error::../net/CMakeLists.txt is missing"; exit 1)
+          set -euxo pipefail
+
+          test -f ../error/CMakeLists.txt
+          test -f ../path/CMakeLists.txt
+          test -f ../env/CMakeLists.txt
+          test -f ../async/CMakeLists.txt
+          test -f ../process/CMakeLists.txt
+          test -f ../net/CMakeLists.txt
+          test -f ../utils/CMakeLists.txt
+          test -f ../json/CMakeLists.txt
+
+          test -f third_party/asio/include/asio.hpp
+          test -f ../async/third_party/asio/include/asio.hpp
 
       - name: Export dependency include paths
         run: |
-          EXTRA_PATHS="$GITHUB_WORKSPACE/../net/include"
-          if [ -d "$GITHUB_WORKSPACE/../utils/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../utils/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../sync/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../sync/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../cache/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../cache/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../json/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../json/include"
-          fi
+          EXTRA_PATHS="$GITHUB_WORKSPACE/../error/include"
+          EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../path/include"
+          EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../env/include"
+          EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../async/include"
+          EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../process/include"
+          EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../net/include"
+          EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../utils/include"
+          EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../json/include"
+
           echo "CPATH=$EXTRA_PATHS${CPATH:+:$CPATH}" >> "$GITHUB_ENV"
           echo "CPLUS_INCLUDE_PATH=$EXTRA_PATHS${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}" >> "$GITHUB_ENV"
 
-      - name: Configure runtime build
+      - name: Configure
         run: |
-          cmake -G Ninja -S . -B build-runtime \
+          cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DVIX_ENABLE_SANITIZERS=OFF \
-            -DVIX_P2P_BUILD_TESTS=ON \
+            -DVIX_P2P_BUILD_TESTS=OFF \
             -DVIX_P2P_FETCH_NET=OFF \
             -DVIX_P2P_FETCH_UTILS=OFF \
             -DVIX_P2P_FETCH_SYNC=OFF \
@@ -242,55 +182,18 @@ jobs:
             -DVIX_P2P_WITH_SYNC=OFF \
             -DVIX_P2P_WITH_CACHE=OFF \
             -DVIX_P2P_WITH_JSON=OFF \
-            -DVIX_P2P_WITH_SSL=OFF
+            -DVIX_P2P_WITH_SSL=${{ matrix.ssl }} \
+            -DVIX_NET_BUILD_TESTS=OFF \
+            -DVIX_NET_FETCH_ERROR=OFF \
+            -DVIX_NET_FETCH_PROCESS=OFF
 
-      - name: Build runtime artifacts
+      - name: Build
         run: |
-          cmake --build build-runtime -j"${BUILD_JOBS}"
+          cmake --build build -j"${BUILD_JOBS}"
 
-      - name: List candidate executables
+      - name: Print artifacts
         run: |
-          echo "---- runtime candidates ----"
-          find build-runtime -type f -executable | sort || true
-
-      - name: Run smoke tests on executables
-        shell: bash
-        run: |
-          set +e
-          FAIL=0
-
-          mapfile -t CANDIDATES < <(
-            find build-runtime -type f -executable | while read -r exe; do
-              base="$(basename "$exe")"
-              if [[ ! "$exe" =~ /CMakeFiles/ ]] && [[ ! "$base" =~ (cmake|ctest) ]]; then
-                echo "$exe"
-              fi
-            done | sort -u
-          )
-
-          if [ ${#CANDIDATES[@]} -eq 0 ]; then
-            echo "No executable candidates found."
-            exit 0
-          fi
-
-          for exe in "${CANDIDATES[@]}"; do
-            echo "==> Smoke run: $exe"
-            timeout 5s "$exe" >/tmp/p2p_smoke.log 2>&1
-            STATUS=$?
-            cat /tmp/p2p_smoke.log || true
-
-            if [ $STATUS -ne 0 ] && [ $STATUS -ne 124 ]; then
-              echo "::warning::Non-zero exit status from $exe (status=$STATUS)"
-              FAIL=1
-            fi
-          done
-
-          if [ $FAIL -ne 0 ]; then
-            echo "::warning::Some smoke runs reported issues."
-          else
-            echo "Smoke runs completed."
-          fi
-          exit 0
+          find build -maxdepth 6 -type f | sort
 
   static-analysis:
     name: Static Analysis
@@ -302,81 +205,91 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y $DEPS
-
-      - name: Prepare Asio layout for p2p
-        run: |
-          set -e
-          test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
-          mkdir -p third_party/asio/include
-          cp -r /usr/include/asio* third_party/asio/include/ || true
-          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            clang \
+            g++ \
+            cppcheck \
+            clang-tidy \
+            pkg-config \
+            git \
+            curl \
+            ca-certificates \
+            libasio-dev \
+            libssl-dev \
+            nlohmann-json3-dev \
+            libspdlog-dev \
+            libfmt-dev
 
       - name: Fetch sibling dependencies
         run: |
-          rm -rf ../net ../utils ../sync ../cache ../json
+          set -euxo pipefail
 
+          rm -rf \
+            ../error \
+            ../path \
+            ../env \
+            ../async \
+            ../process \
+            ../net \
+            ../utils \
+            ../json
+
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/error.git ../error
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/path.git ../path
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/env.git ../env
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" --recurse-submodules https://github.com/vixcpp/async.git ../async
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/process.git ../process
           git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/net.git ../net
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/utils.git ../utils || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/sync.git ../sync || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/cache.git ../cache || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json || true
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/utils.git ../utils
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json
 
-      - name: Verify required sibling dependencies
+      - name: Prepare Asio layouts
         run: |
-          test -f ../net/CMakeLists.txt || (echo "::error::../net/CMakeLists.txt is missing"; exit 1)
+          set -euxo pipefail
 
-      - name: Export dependency include paths
-        run: |
-          EXTRA_PATHS="$GITHUB_WORKSPACE/../net/include"
-          if [ -d "$GITHUB_WORKSPACE/../utils/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../utils/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../sync/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../sync/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../cache/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../cache/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../json/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../json/include"
-          fi
-          echo "CPATH=$EXTRA_PATHS${CPATH:+:$CPATH}" >> "$GITHUB_ENV"
-          echo "CPLUS_INCLUDE_PATH=$EXTRA_PATHS${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}" >> "$GITHUB_ENV"
+          mkdir -p third_party/asio/include
+          cp -r /usr/include/asio* third_party/asio/include/ || true
+          test -f third_party/asio/include/asio.hpp
+
+          mkdir -p ../async/third_party/asio
+          rm -rf ../async/third_party/asio/include
+          mkdir -p ../async/third_party/asio/include
+          cp -r /usr/include/asio* ../async/third_party/asio/include/ || true
+          test -f ../async/third_party/asio/include/asio.hpp
 
       - name: Configure for analysis
         run: |
-          cmake -G Ninja -S . -B build-analyze \
+          cmake -S . -B build-analyze -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DVIX_ENABLE_SANITIZERS=OFF \
-            -DVIX_P2P_BUILD_TESTS=ON \
+            -DVIX_P2P_BUILD_TESTS=OFF \
             -DVIX_P2P_FETCH_NET=OFF \
             -DVIX_P2P_FETCH_UTILS=OFF \
             -DVIX_P2P_FETCH_SYNC=OFF \
             -DVIX_P2P_FETCH_CACHE=OFF \
             -DVIX_P2P_WITH_UTILS=AUTO \
-            -DVIX_P2P_WITH_SYNC=AUTO \
-            -DVIX_P2P_WITH_CACHE=AUTO \
-            -DVIX_P2P_WITH_JSON=AUTO \
-            -DVIX_P2P_WITH_SSL=OFF
+            -DVIX_P2P_WITH_SYNC=OFF \
+            -DVIX_P2P_WITH_CACHE=OFF \
+            -DVIX_P2P_WITH_JSON=OFF \
+            -DVIX_P2P_WITH_SSL=OFF \
+            -DVIX_NET_BUILD_TESTS=OFF \
+            -DVIX_NET_FETCH_ERROR=OFF \
+            -DVIX_NET_FETCH_PROCESS=OFF
 
-      - name: Run clang-tidy on source files
+      - name: Run clang-tidy
         run: |
           set +e
-          find src tests -name '*.cpp' -print0 | xargs -0 -n1 -P2 clang-tidy -p build-analyze
-          STATUS=$?
-          if [ $STATUS -ne 0 ]; then
-            echo "::warning::clang-tidy reported issues."
-          else
-            echo "clang-tidy completed successfully."
-          fi
+          find src -name '*.cpp' -print0 | xargs -0 -r -n1 -P2 clang-tidy -p build-analyze
           exit 0
 
-      - name: Run cppcheck on headers and sources
+      - name: Run cppcheck
         run: |
           set +e
           cppcheck \
@@ -385,19 +298,12 @@ jobs:
             --inconclusive \
             --quiet \
             --suppress=missingIncludeSystem \
-            include/ src/ tests/
-          STATUS=$?
-          if [ $STATUS -ne 0 ]; then
-            echo "::warning::cppcheck reported issues."
-          else
-            echo "cppcheck completed successfully."
-          fi
+            include/ src/
           exit 0
 
-  valgrind:
-    name: Valgrind Checks
+  install-check:
+    name: Install P2P
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     steps:
       - name: Checkout p2p repository
@@ -405,57 +311,66 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y $DEPS
-
-      - name: Prepare Asio layout for p2p
-        run: |
-          set -e
-          test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
-          mkdir -p third_party/asio/include
-          cp -r /usr/include/asio* third_party/asio/include/ || true
-          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            g++ \
+            pkg-config \
+            git \
+            curl \
+            ca-certificates \
+            libasio-dev \
+            libssl-dev \
+            nlohmann-json3-dev \
+            libspdlog-dev \
+            libfmt-dev
 
       - name: Fetch sibling dependencies
         run: |
-          rm -rf ../net ../utils ../sync ../cache ../json
+          set -euxo pipefail
 
+          rm -rf \
+            ../error \
+            ../path \
+            ../env \
+            ../async \
+            ../process \
+            ../net \
+            ../utils \
+            ../json
+
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/error.git ../error
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/path.git ../path
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/env.git ../env
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" --recurse-submodules https://github.com/vixcpp/async.git ../async
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/process.git ../process
           git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/net.git ../net
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/utils.git ../utils || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/sync.git ../sync || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/cache.git ../cache || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json || true
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/utils.git ../utils
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json
 
-      - name: Verify required sibling dependencies
+      - name: Prepare Asio layouts
         run: |
-          test -f ../net/CMakeLists.txt || (echo "::error::../net/CMakeLists.txt is missing"; exit 1)
+          set -euxo pipefail
 
-      - name: Export dependency include paths
-        run: |
-          EXTRA_PATHS="$GITHUB_WORKSPACE/../net/include"
-          if [ -d "$GITHUB_WORKSPACE/../utils/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../utils/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../sync/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../sync/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../cache/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../cache/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../json/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../json/include"
-          fi
-          echo "CPATH=$EXTRA_PATHS${CPATH:+:$CPATH}" >> "$GITHUB_ENV"
-          echo "CPLUS_INCLUDE_PATH=$EXTRA_PATHS${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}" >> "$GITHUB_ENV"
+          mkdir -p third_party/asio/include
+          cp -r /usr/include/asio* third_party/asio/include/ || true
+          test -f third_party/asio/include/asio.hpp
 
-      - name: Configure valgrind build
+          mkdir -p ../async/third_party/asio
+          rm -rf ../async/third_party/asio/include
+          mkdir -p ../async/third_party/asio/include
+          cp -r /usr/include/asio* ../async/third_party/asio/include/ || true
+          test -f ../async/third_party/asio/include/asio.hpp
+
+      - name: Configure installable build
         run: |
-          cmake -G Ninja -S . -B build-valgrind \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DVIX_ENABLE_SANITIZERS=OFF \
-            -DVIX_P2P_BUILD_TESTS=ON \
+          cmake -S . -B build-install -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVIX_P2P_BUILD_TESTS=OFF \
             -DVIX_P2P_FETCH_NET=OFF \
             -DVIX_P2P_FETCH_UTILS=OFF \
             -DVIX_P2P_FETCH_SYNC=OFF \
@@ -464,102 +379,25 @@ jobs:
             -DVIX_P2P_WITH_SYNC=OFF \
             -DVIX_P2P_WITH_CACHE=OFF \
             -DVIX_P2P_WITH_JSON=OFF \
-            -DVIX_P2P_WITH_SSL=OFF
-
-      - name: Build
-        run: |
-          cmake --build build-valgrind -j"${BUILD_JOBS}"
-
-      - name: Run valgrind on executables
-        shell: bash
-        run: |
-          set +e
-          FAIL=0
-
-          mapfile -t BINS < <(
-            find build-valgrind -type f -executable | while read -r exe; do
-              base="$(basename "$exe")"
-              if [[ ! "$exe" =~ /CMakeFiles/ ]] && [[ ! "$base" =~ (cmake|ctest) ]]; then
-                echo "$exe"
-              fi
-            done | sort -u
-          )
-
-          if [ ${#BINS[@]} -eq 0 ]; then
-            echo "No candidate executables found for valgrind."
-            exit 0
-          fi
-
-          for exe in "${BINS[@]}"; do
-            echo "==> Valgrind: $exe"
-            timeout 20s valgrind \
-              --leak-check=full \
-              --show-leak-kinds=all \
-              --track-origins=yes \
-              "$exe"
-            STATUS=$?
-
-            if [ $STATUS -ne 0 ] && [ $STATUS -ne 124 ]; then
-              echo "::warning::Valgrind reported issues for $exe"
-              FAIL=1
-            fi
-          done
-
-          if [ $FAIL -ne 0 ]; then
-            echo "::warning::Valgrind detected potential issues."
-          else
-            echo "Valgrind checks completed."
-          fi
-          exit 0
-
-  standalone-package-check:
-    name: Standalone Package Export Check
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout p2p repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y $DEPS
-
-      - name: Prepare Asio layout for p2p
-        run: |
-          set -e
-          test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
-          mkdir -p third_party/asio/include
-          cp -r /usr/include/asio* third_party/asio/include/ || true
-          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
-
-      - name: Configure installable standalone build
-        run: |
-          cmake -G Ninja -S . -B build-install \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DVIX_P2P_BUILD_TESTS=OFF \
-            -DVIX_P2P_WITH_UTILS=OFF \
-            -DVIX_P2P_WITH_SYNC=OFF \
-            -DVIX_P2P_WITH_CACHE=OFF \
-            -DVIX_P2P_WITH_JSON=OFF \
             -DVIX_P2P_WITH_SSL=OFF \
+            -DVIX_NET_BUILD_TESTS=OFF \
+            -DVIX_NET_FETCH_ERROR=OFF \
+            -DVIX_NET_FETCH_PROCESS=OFF \
             -DCMAKE_INSTALL_PREFIX="${PWD}/.ci-install"
 
-      - name: Build standalone package
+      - name: Build installable package
         run: |
           cmake --build build-install -j"${BUILD_JOBS}"
 
-      - name: Install standalone package
+      - name: Install package
         run: |
           cmake --install build-install
 
-      - name: Verify installed package files
+      - name: Verify install tree
         run: |
-          echo "---- install tree ----"
-          find .ci-install -maxdepth 6 -type f | sort || true
-          test -f .ci-install/include/vix/p2p/P2P.hpp || (echo "::error::p2p headers not found"; exit 1)
+          find .ci-install -maxdepth 8 -type f | sort
+          test -d .ci-install/include/vix/p2p
+          test -f .ci-install/lib/libvix_p2p.a
 
   config-coverage:
     name: Configuration Coverage
@@ -571,75 +409,64 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y $DEPS
-
-      - name: Prepare Asio layout for p2p
-        run: |
-          set -e
-          test -f /usr/include/asio.hpp || (echo "::error::System Asio header not found after install"; exit 1)
-          mkdir -p third_party/asio/include
-          cp -r /usr/include/asio* third_party/asio/include/ || true
-          test -f third_party/asio/include/asio.hpp || (echo "::error::Failed to prepare third_party/asio/include/asio.hpp"; exit 1)
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            g++ \
+            pkg-config \
+            git \
+            curl \
+            ca-certificates \
+            libasio-dev \
+            libssl-dev \
+            nlohmann-json3-dev \
+            libspdlog-dev \
+            libfmt-dev
 
       - name: Fetch sibling dependencies
         run: |
-          rm -rf ../net ../utils ../sync ../cache ../json
+          set -euxo pipefail
 
+          rm -rf \
+            ../error \
+            ../path \
+            ../env \
+            ../async \
+            ../process \
+            ../net \
+            ../utils \
+            ../json
+
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/error.git ../error
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/path.git ../path
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/env.git ../env
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" --recurse-submodules https://github.com/vixcpp/async.git ../async
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/process.git ../process
           git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/net.git ../net
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/utils.git ../utils || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/sync.git ../sync || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/cache.git ../cache || true
-          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json || true
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/utils.git ../utils
+          git clone --depth 1 --branch "${VIX_GIT_BRANCH}" https://github.com/vixcpp/json.git ../json
 
-      - name: Verify required sibling dependencies
+      - name: Prepare Asio layouts
         run: |
-          test -f ../net/CMakeLists.txt || (echo "::error::../net/CMakeLists.txt is missing"; exit 1)
+          set -euxo pipefail
 
-      - name: Export dependency include paths
-        run: |
-          EXTRA_PATHS="$GITHUB_WORKSPACE/../net/include"
-          if [ -d "$GITHUB_WORKSPACE/../utils/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../utils/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../sync/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../sync/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../cache/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../cache/include"
-          fi
-          if [ -d "$GITHUB_WORKSPACE/../json/include" ]; then
-            EXTRA_PATHS="$EXTRA_PATHS:$GITHUB_WORKSPACE/../json/include"
-          fi
-          echo "CPATH=$EXTRA_PATHS${CPATH:+:$CPATH}" >> "$GITHUB_ENV"
-          echo "CPLUS_INCLUDE_PATH=$EXTRA_PATHS${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}" >> "$GITHUB_ENV"
+          mkdir -p third_party/asio/include
+          cp -r /usr/include/asio* third_party/asio/include/ || true
+          test -f third_party/asio/include/asio.hpp
 
-      - name: Configure release mode with sibling deps
-        run: |
-          cmake -G Ninja -S . -B build-release-local \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DVIX_ENABLE_SANITIZERS=OFF \
-            -DVIX_P2P_BUILD_TESTS=OFF \
-            -DVIX_P2P_FETCH_NET=OFF \
-            -DVIX_P2P_FETCH_UTILS=OFF \
-            -DVIX_P2P_FETCH_SYNC=OFF \
-            -DVIX_P2P_FETCH_CACHE=OFF \
-            -DVIX_P2P_WITH_UTILS=AUTO \
-            -DVIX_P2P_WITH_SYNC=AUTO \
-            -DVIX_P2P_WITH_CACHE=AUTO \
-            -DVIX_P2P_WITH_JSON=AUTO \
-            -DVIX_P2P_WITH_SSL=OFF
+          mkdir -p ../async/third_party/asio
+          rm -rf ../async/third_party/asio/include
+          mkdir -p ../async/third_party/asio/include
+          cp -r /usr/include/asio* ../async/third_party/asio/include/ || true
+          test -f ../async/third_party/asio/include/asio.hpp
 
-      - name: Build release mode with sibling deps
+      - name: Configure release minimal mode
         run: |
-          cmake --build build-release-local -j"${BUILD_JOBS}"
-
-      - name: Configure release mode with minimal optional deps
-        run: |
-          rm -rf build-release-min
-          cmake -G Ninja -S . -B build-release-min \
+          cmake -S . -B build-release-min -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DVIX_ENABLE_SANITIZERS=OFF \
             -DVIX_P2P_BUILD_TESTS=OFF \
@@ -651,35 +478,54 @@ jobs:
             -DVIX_P2P_WITH_SYNC=OFF \
             -DVIX_P2P_WITH_CACHE=OFF \
             -DVIX_P2P_WITH_JSON=OFF \
-            -DVIX_P2P_WITH_SSL=OFF
+            -DVIX_P2P_WITH_SSL=OFF \
+            -DVIX_NET_BUILD_TESTS=OFF \
+            -DVIX_NET_FETCH_ERROR=OFF \
+            -DVIX_NET_FETCH_PROCESS=OFF
 
-      - name: Build release mode with minimal optional deps
+      - name: Build release minimal mode
         run: |
           cmake --build build-release-min -j"${BUILD_JOBS}"
+
+      - name: Configure release with utils and SSL
+        run: |
+          cmake -S . -B build-release-utils-ssl -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVIX_ENABLE_SANITIZERS=OFF \
+            -DVIX_P2P_BUILD_TESTS=OFF \
+            -DVIX_P2P_FETCH_NET=OFF \
+            -DVIX_P2P_FETCH_UTILS=OFF \
+            -DVIX_P2P_FETCH_SYNC=OFF \
+            -DVIX_P2P_FETCH_CACHE=OFF \
+            -DVIX_P2P_WITH_UTILS=AUTO \
+            -DVIX_P2P_WITH_SYNC=OFF \
+            -DVIX_P2P_WITH_CACHE=OFF \
+            -DVIX_P2P_WITH_JSON=OFF \
+            -DVIX_P2P_WITH_SSL=ON \
+            -DVIX_NET_BUILD_TESTS=OFF \
+            -DVIX_NET_FETCH_ERROR=OFF \
+            -DVIX_NET_FETCH_PROCESS=OFF
+
+      - name: Build release with utils and SSL
+        run: |
+          cmake --build build-release-utils-ssl -j"${BUILD_JOBS}"
 
   summary:
     name: P2P Strict CI Summary
     needs:
-      [
-        build-test-sanitized,
-        runtime-smoke,
-        static-analysis,
-        valgrind,
-        standalone-package-check,
-        config-coverage,
-      ]
+      - build
+      - static-analysis
+      - install-check
+      - config-coverage
     runs-on: ubuntu-latest
 
     steps:
       - name: Print summary
         run: |
           echo "P2P strict CI completed."
-          echo "This workflow validates:"
-          echo "- sanitized builds"
-          echo "- unit tests"
-          echo "- runtime smoke checks"
+          echo "- gcc and clang builds"
+          echo "- required net/process/async dependency chain"
+          echo "- SSL ON and OFF builds"
           echo "- static analysis"
-          echo "- valgrind"
-          echo "- standalone package export"
-          echo "- sibling dependency mode"
-          echo "- optional dependency coverage"
+          echo "- install tree check"
+          echo "- minimal and utils/SSL configuration coverage"

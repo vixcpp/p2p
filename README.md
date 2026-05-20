@@ -1,311 +1,303 @@
-# vix/p2p
+# Vix.cpp P2P Module
 
-Peer-to-peer engine for Vix.cpp
+Peer-to-peer engine for Vix.cpp.
 
-**Durable. Offline-first. Deterministic.**
+The P2P module provides the networking and replication foundation used to build offline-first, local-first, and distributed C++ systems with peer discovery, secure handshakes, message framing, transport abstraction, routing, WAL replication, and safe sync.
 
----
+## Documentation
 
-## Overview
+Full documentation will be available here:
 
-vix/p2p is the networking layer of Vix.cpp.
+https://docs.vixcpp.com/modules/p2p/
 
-It provides everything needed to build a real-world distributed system:
+API reference:
 
-- peer discovery (LAN + registry)
-- secure handshake
-- message framing
-- transport abstraction
+https://docs.vixcpp.com/modules/p2p/api-reference
+
+## What P2P provides
+
+- Peer discovery
+- LAN discovery
+- Registry-based bootstrap
+- Secure handshake
+- Message framing
+- Protocol envelopes
+- Message dispatch
+- Transport abstraction
+- Peer routing
 - WAL replication
-- offline-first sync
+- Outbox synchronization
+- Offline-first sync
+- Failure-tolerant replication model
 
-Designed for unreliable networks. Built for the real world.
+## Public headers
 
----
+```cpp
+#include <vix/p2p.hpp>
+```
 
-## Core Philosophy
+Or include specific headers when needed:
 
-- Local-first → nodes work without network
-- Eventually consistent → sync happens later
-- Deterministic → same inputs → same state
-- Transport-agnostic → TCP, QUIC, future-ready
-- Failure-tolerant → restart-safe, replay-safe
+```cpp
+#include <vix/p2p/discovery.hpp>
+#include <vix/p2p/framing.hpp>
+#include <vix/p2p/envelope.hpp>
+#include <vix/p2p/dispatch.hpp>
+#include <vix/p2p/router.hpp>
+#include <vix/p2p/sync.hpp>
+```
 
----
-
-## Architecture
+## Basic idea
 
 ```text
-Discovery  → finds peers (UDP / registry)
-Transport  → sends frames (TCP / QUIC)
-Framing    → splits byte streams into messages
-Envelope   → protocol-level message container
-Dispatch   → routes message types
-EdgeSync   → WAL replication + outbox
-Router     → optional multi-hop routing
+local write
+  -> WAL
+  -> envelope
+  -> framing
+  -> transport
+  -> peer
+  -> apply
+  -> ack
+  -> retry until convergence
 ```
 
----
+The network is not required for local correctness. Nodes can continue working offline and synchronize when connectivity returns.
 
-## Protocol Layers
+## Protocol architecture
 
-### 1. Framing
+```text
+Discovery
+  -> finds peers
 
-```cpp
-Frame encode(payload);
-FrameDecodeResult decode(buffer);
+Transport
+  -> sends bytes
+
+Framing
+  -> splits byte streams into messages
+
+Envelope
+  -> wraps protocol messages
+
+Dispatch
+  -> routes message types
+
+EdgeSync
+  -> WAL replication and outbox sync
+
+Router
+  -> optional peer routing
 ```
 
-Example:
+## Message flow
 
-LengthPrefixVarint → compact framing using varint length
-
----
-
-### 2. Envelope
-
-Every message is wrapped in an envelope:
-
-```
-magic | version | type | msg_id | flags | [crypto] | payload
-```
-
-Features:
-
-- versioning
-- encryption (AEAD)
-- message tracking
-- compatibility checks
-
----
-
-### 3. Messages
-
-Supported message types:
-
-- Hello
-- HelloAck
-- HelloFinish
-
-- Ping
-- Pong
-
-- WalPush
-- WalAck
-- OutboxPull
-
----
-
-### 4. Dispatch
-
-```cpp
-AnyMessage decode_payload_or_throw(type, payload);
+```text
+encode(message)
+  -> envelope
+  -> framing
+  -> transport
+  -> network
+  -> decode
+  -> dispatch
+  -> handler
 ```
 
-Maps raw payload → typed message (std::variant)
+## Handshake model
 
----
+```text
+A -> Hello
+B -> HelloAck
+A -> HelloFinish
+```
 
-### 5. Sync (EdgeSync)
+After the handshake, the peer session can become connected and start exchanging protocol messages.
 
-- WalPush → send WAL batch
-- WalAck → confirm apply
-- OutboxPull → request pending ops
+## Offline sync model
 
-Core of offline-first replication.
+```text
+local operation
+  -> append to WAL
+  -> push WAL batch
+  -> peer applies operation
+  -> peer sends acknowledgement
+  -> retry pending operations until convergence
+```
 
----
+## Examples
 
-## Quick Start
+### Envelope and framing
 
-### Basic message roundtrip
 ```bash
 vix run examples/p2p/01_envelope_and_framing_basic.cpp
 ```
 
 ### Handshake messages
+
 ```bash
 vix run examples/p2p/02_hello_handshake_messages.cpp
 ```
 
-### Discovery JSON
+### Discovery announce JSON
+
 ```bash
 vix run examples/p2p/03_discovery_announce_json.cpp
 ```
 
 ### Router
+
 ```bash
 vix run examples/p2p/04_router_memory_basic.cpp
 ```
 
 ### Secure envelope
+
 ```bash
 vix run examples/p2p/05_pack_secure_envelope.cpp
 ```
 
 ### Dispatch
+
 ```bash
 vix run examples/p2p/06_dispatch_decode_basic.cpp
 ```
 
 ### WAL sync
+
 ```bash
 vix run examples/p2p/07_wal_push_and_ack.cpp
 ```
 
----
+## Runtime examples
 
-## Runtime Examples
-
-⚠️ Important rule with vix run:
-
-- `--` = compiler flags
-- `--run` = runtime arguments (argv)
-
-### Manual connect (TCP)
+### Manual TCP connection
 
 Terminal 1:
+
 ```bash
 vix run examples/p2p/08_runtime_manual_connect.cpp --run server
 ```
 
 Terminal 2:
+
 ```bash
 vix run examples/p2p/08_runtime_manual_connect.cpp --run client 127.0.0.1 9101
 ```
 
----
-
-### UDP Discovery (LAN)
+### UDP discovery
 
 Terminal 1:
+
 ```bash
 vix run examples/p2p/09_udp_discovery_basic.cpp --run node-a 9201
 ```
 
 Terminal 2:
+
 ```bash
 vix run examples/p2p/09_udp_discovery_basic.cpp --run node-b 9202
 ```
 
----
+### HTTP bootstrap
 
-### HTTP Bootstrap (Registry)
-
-Start a registry returning:
-
-```json
-{
-  "peers": [
-    { "host": "127.0.0.1", "tcp_port": 9301, "node_id": "node-x" }
-  ]
-}
-```
-
-Run:
 ```bash
 vix run examples/p2p/10_bootstrap_http_basic.cpp --run http://127.0.0.1:8080/peers
 ```
 
----
+## CLI usage
 
-## CLI Alternative (Recommended)
-
-Instead of writing code, you can directly run a node:
+You can also run a P2P node directly from the Vix CLI:
 
 ```bash
 vix p2p --id A --listen 9001
 ```
 
-Connect:
+Connect another node:
 
 ```bash
 vix p2p --id B --listen 9002 --connect 127.0.0.1:9001
 ```
 
-This uses the same engine internally.
+## Runtime arguments
 
----
+When using `vix run`, keep this rule:
 
-## Key Concepts
-
-### Message Flow
-
-```
-encode(message)
-→ envelope
-→ framing
-→ transport
-→ network
-→ decode
-→ dispatch
+```text
+--     = compiler or linker flags
+--run  = runtime arguments passed to the program
 ```
 
----
+Example:
 
-### Handshake (v2)
-
-```
-A → Hello
-B → HelloAck
-A → HelloFinish
+```bash
+vix run examples/p2p/08_runtime_manual_connect.cpp --run client 127.0.0.1 9101
 ```
 
-After that:
+## Build
 
-- session key established
-- encryption enabled
-- peer becomes "Connected"
+Contributors should use the Vix CLI to build this module.
 
----
+Vix wraps the C++ build workflow with project detection, presets, Ninja builds, clean logs, caching, and focused diagnostics. This keeps the contributor workflow consistent and helps avoid hidden C++ build issues.
 
-### Offline Sync
+### Build the project
 
-```
-local write → WAL
-WAL → WalPush
-peer → WalAck
-retry until convergence
+```bash
+git clone https://github.com/vixcpp/vix.git
+cd vix
+vix build
 ```
 
----
+### Build all targets
 
-## Why it exists
+Use this before running the full test suite, install workflows, or release checks:
 
-Real systems fail:
+```bash
+vix build --build-target all
+```
 
-- network drops
-- partial writes
-- restarts
-- duplicates
+### Clean rebuild
 
-Traditional systems:
+Use this when the local CMake cache or build directory may be stale:
 
-- lose data
-- become inconsistent
+```bash
+vix build --clean
+```
 
-Vix P2P ensures:
+### Release build
 
-> No data is lost. Ever.
-> Sync happens later. Safely.
+```bash
+vix build --preset release
+```
 
----
+## Tests
 
-## Summary
+Build all targets first, then run tests:
 
-vix/p2p is not just networking.
+```bash
+vix build --build-target all
+vix tests
+```
 
-It is:
+Before opening a pull request, use:
 
-- a sync protocol
-- a replication engine
-- a failure recovery system
-- a foundation for distributed apps
+```bash
+vix fmt --check
+vix build --build-target all
+vix tests
+```
 
----
+## Useful links
+
+- P2P documentation: https://docs.vixcpp.com/modules/p2p/
+- P2P API reference: https://docs.vixcpp.com/modules/p2p/api-reference
+- P2P CLI command: https://docs.vixcpp.com/cli/p2p
+- Build command: https://docs.vixcpp.com/cli/build
+- Tests command: https://docs.vixcpp.com/cli/tests
+- Documentation: https://docs.vixcpp.com/
+- Engineering notes: https://blog.vixcpp.com/
+- Registry: https://registry.vixcpp.com/
+- GitHub: https://github.com/vixcpp/vix
 
 ## License
 
-MIT License
-Copyright (c) 2025 Gaspard Kirira
+MIT License.
 
+See [`LICENSE`](../../LICENSE) for details.
