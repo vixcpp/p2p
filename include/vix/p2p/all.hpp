@@ -55,7 +55,4 @@
 #include <vix/p2p/messages/WalAck.hpp>
 #include <vix/p2p/messages/WalPush.hpp>
 
-// transport
-#include <vix/p2p/transport/Tcp.hpp>
-
 #endif // VIX_P2P_P2P_HPP
