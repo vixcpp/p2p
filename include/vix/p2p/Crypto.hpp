@@ -12,8 +12,8 @@
  *
  *  Vix.cpp
  */
-#ifndef VIX_CRYPTO_HPP
-#define VIX_CRYPTO_HPP
+#ifndef VIX_P2P_CRYPTO_HPP
+#define VIX_P2P_CRYPTO_HPP
 
 #include <cstdint>
 #include <span>
