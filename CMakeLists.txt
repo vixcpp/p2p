@@ -33,6 +33,8 @@ endif()
 
 set(CMAKE_DISABLE_FIND_PACKAGE_VixOrm ON)
 
+option(VIX_P2P_ENABLE_INSTALL "Enable install/export rules for vix::p2p" ON)
+
 include(GNUInstallDirs)
 # ----------------------------------------------------
 # Asio (standalone, header-only)
@@ -486,16 +488,18 @@ target_include_directories(vix_p2p
     EXPORT_NAME p2p
   )
 
-  install(TARGETS vix_p2p
-    EXPORT VixTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  )
+  if (VIX_P2P_ENABLE_INSTALL)
+    install(TARGETS vix_p2p
+      EXPORT VixTargets
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+      INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
 
-  install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-          FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
+    install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+            FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
+  endif()
 
 # HEADER-ONLY
 else()
@@ -521,13 +525,15 @@ else()
   vix_p2p_try_link_json(vix_p2p INTERFACE)
   vix_p2p_try_link_ssl(vix_p2p INTERFACE)
 
-  install(TARGETS vix_p2p
-    EXPORT VixTargets
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  )
+  if (VIX_P2P_ENABLE_INSTALL)
+    install(TARGETS vix_p2p
+      EXPORT VixTargets
+      INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
 
-  install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-          FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
+    install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+            FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
+  endif()
 endif()
 
 # Tests
