@@ -544,7 +544,7 @@ namespace vix::p2p
         auto &peer = peers_[peer_id];
 
         auto now_ms = now_ms_();
-        if (std::llabs((long long)now_ms - (long long)h.ts_ms) > 60'000)
+        if (std::llabs(static_cast<long long>(now_ms) - static_cast<long long>(h.ts_ms)) > 60'000)
           throw std::runtime_error("hello replay");
 
         peer.handshake.emplace();
@@ -907,7 +907,7 @@ namespace vix::p2p
 
       if (do_encrypt)
       {
-        out.flags = (std::uint32_t)EnvelopeFlag::Encrypted;
+        out.flags = static_cast<std::uint32_t>(EnvelopeFlag::Encrypted);
 
         for (std::size_t i = 0; i < 8; ++i)
           out.nonce[i] = static_cast<std::uint8_t>((ctr >> (8u * i)) & 0xFFu);
@@ -988,7 +988,7 @@ namespace vix::p2p
     static std::string endpoint_str_(const PeerEndpoint &ep)
     {
       const std::string scheme = ep.scheme.empty() ? "tcp" : ep.scheme;
-      return scheme + "://" + ep.host + ":" + std::to_string((int)ep.port);
+      return scheme + "://" + ep.host + ":" + std::to_string(static_cast<int>(ep.port));
     }
 
     void rekey_peer_unlocked_(const PeerId &old_id, const PeerId &new_id)

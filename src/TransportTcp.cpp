@@ -175,7 +175,7 @@ namespace vix::p2p
             self->stats.bytes_received += n;
             self->pending.insert(self->pending.end(),
                                  self->read_chunk.begin(),
-                                 self->read_chunk.begin() + (std::ptrdiff_t)n);
+                                 self->read_chunk.begin() + static_cast<std::ptrdiff_t>(n));
 
             auto decoded = self->framer.decode(self->pending);
 
