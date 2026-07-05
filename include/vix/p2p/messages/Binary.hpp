@@ -114,10 +114,10 @@ namespace vix::p2p::bin
     {
       require(4);
       std::uint32_t v =
-          (std::uint32_t)s[off] |
-          ((std::uint32_t)s[off + 1] << 8) |
-          ((std::uint32_t)s[off + 2] << 16) |
-          ((std::uint32_t)s[off + 3] << 24);
+          static_cast<std::uint32_t>(s[off]) |
+          (static_cast<std::uint32_t>(s[off + 1]) << 8) |
+          (static_cast<std::uint32_t>(s[off + 2]) << 16) |
+          (static_cast<std::uint32_t>(s[off + 3]) << 24);
       off += 4;
       return v;
     }
@@ -156,7 +156,7 @@ namespace vix::p2p::bin
       for (int i = 0; i < 10; ++i)
       {
         auto byte = u8();
-        result |= (std::uint64_t)(byte & 0x7F) << shift;
+        result |= static_cast<std::uint64_t>(byte & 0x7F) << shift;
         if ((byte & 0x80) == 0)
           return result;
         shift += 7;

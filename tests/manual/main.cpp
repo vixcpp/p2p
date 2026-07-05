@@ -276,7 +276,7 @@ int main(int argc, char **argv)
       std::cerr << "Invalid --disc-interval\n";
       return 1;
     }
-    disc_interval_ms = (std::uint32_t)(*v * 1000ULL);
+    disc_interval_ms = static_cast<std::uint32_t>(*v * 1000ULL);
   }
 
   bool bootstrap_on = false;
@@ -331,7 +331,7 @@ int main(int argc, char **argv)
     bc.self_node_id = cfg.node_id;
     bc.self_tcp_port = cfg.listen_port;
     bc.registry_url = registry;
-    bc.poll_interval_ms = (std::uint32_t)(boot_interval_sec * 1000ULL);
+    bc.poll_interval_ms = static_cast<std::uint32_t>(boot_interval_sec * 1000ULL);
     bc.mode = announce_on ? vix::p2p::BootstrapMode::PullAndAnnounce
                           : vix::p2p::BootstrapMode::PullOnly;
 

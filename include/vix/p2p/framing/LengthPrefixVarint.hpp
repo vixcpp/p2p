@@ -93,7 +93,7 @@ namespace vix::p2p::framing
           }
 
           std::uint8_t byte = work[off + i];
-          len |= (std::uint64_t)(byte & 0x7F) << shift;
+          len |= static_cast<std::uint64_t>(byte & 0x7F) << shift;
 
           if ((byte & 0x80) == 0)
           {

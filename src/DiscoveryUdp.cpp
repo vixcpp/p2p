@@ -26,7 +26,7 @@ namespace vix::p2p
   static std::uint64_t now_epoch_ms()
   {
     using namespace std::chrono;
-    return (std::uint64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+    return static_cast<std::uint64_t>(duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count());
   }
 
   static std::chrono::steady_clock::time_point now_steady()
@@ -214,7 +214,7 @@ namespace vix::p2p
         ip_last_packet_[ip] = now;
       }
 
-      std::string s((const char *)recv_buf_.data(), n);
+      std::string s(reinterpret_cast<const char *>(recv_buf_.data()), n);
 
       auto ann = msg::DiscoveryAnnounce::from_json(s);
       if (!ann)
@@ -291,7 +291,7 @@ namespace vix::p2p
 
     std::uint64_t rng64_()
     {
-      return (std::uint64_t)rd_() ^ ((std::uint64_t)rd_() << 32);
+      return static_cast<std::uint64_t>(rd_()) ^ (static_cast<std::uint64_t>(rd_()) << 32);
     }
 
   private:

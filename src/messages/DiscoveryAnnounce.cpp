@@ -88,7 +88,7 @@ namespace vix::p2p::msg
     if (p == std::string::npos)
       return std::nullopt;
     p++;
-    while (p < s.size() && std::isspace((unsigned char)s[p]))
+    while (p < s.size() && std::isspace(static_cast<unsigned char>(s[p])))
       p++;
     if (p >= s.size() || s[p] != '"')
       return std::nullopt;
@@ -121,14 +121,14 @@ namespace vix::p2p::msg
     if (p == std::string::npos)
       return std::nullopt;
     p++;
-    while (p < s.size() && std::isspace((unsigned char)s[p]))
+    while (p < s.size() && std::isspace(static_cast<unsigned char>(s[p])))
       p++;
     std::uint64_t v = 0;
     bool any = false;
-    while (p < s.size() && std::isdigit((unsigned char)s[p]))
+    while (p < s.size() && std::isdigit(static_cast<unsigned char>(s[p])))
     {
       any = true;
-      v = v * 10 + (std::uint64_t)(s[p] - '0');
+      v = v * 10 + static_cast<std::uint64_t>(s[p] - '0');
       p++;
     }
     if (!any)
@@ -156,7 +156,7 @@ namespace vix::p2p::msg
       return std::nullopt;
 
     a.node_id = *id;
-    a.tcp_port = (std::uint16_t)(*port);
+    a.tcp_port = static_cast<std::uint16_t>(*port);
     a.ts_ms = *ts;
     a.nonce = *nonce;
 
