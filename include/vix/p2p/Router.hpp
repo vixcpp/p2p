@@ -12,8 +12,8 @@
  *
  *  Vix.cpp
  */
-#ifndef VIX_ROUTER_HPP
-#define VIX_ROUTER_HPP
+#ifndef VIX_P2P_ROUTER_HPP
+#define VIX_P2P_ROUTER_HPP
 
 #include <string>
 #include <unordered_map>
@@ -128,4 +128,4 @@ namespace vix::p2p
 
 } // namespace vix::p2p
 
-#endif // VIX_ROUTER_HPP
+#endif // VIX_P2P_ROUTER_HPP

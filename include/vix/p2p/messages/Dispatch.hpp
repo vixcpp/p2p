@@ -12,8 +12,8 @@
  *
  *  Vix.cpp
  */
-#ifndef VIX_DISPATCH_HPP
-#define VIX_DISPATCH_HPP
+#ifndef VIX_P2P_MESSAGES_DISPATCH_HPP
+#define VIX_P2P_MESSAGES_DISPATCH_HPP
 
 #include <variant>
 #include <span>
@@ -94,4 +94,4 @@ namespace vix::p2p::msg
 
 } // namespace vix::p2p::msg
 
-#endif // VIX_DISPATCH_HPP
+#endif // VIX_P2P_MESSAGES_DISPATCH_HPP
