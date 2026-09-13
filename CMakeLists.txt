@@ -510,6 +510,10 @@ else()
   add_library(vix_p2p INTERFACE)
   add_library(vix::p2p ALIAS vix_p2p)
 
+  set_target_properties(vix_p2p PROPERTIES
+    EXPORT_NAME p2p
+  )
+
   target_compile_features(vix_p2p INTERFACE cxx_std_20)
 
  target_include_directories(vix_p2p INTERFACE

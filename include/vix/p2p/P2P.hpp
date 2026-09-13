@@ -12,8 +12,8 @@
  *
  *  Vix.cpp
  */
-#ifndef VIX_P2P_HPP
-#define VIX_P2P_HPP
+#ifndef VIX_P2P_P2P_HPP
+#define VIX_P2P_P2P_HPP
 
 #include <memory>
 #include <optional>
@@ -392,4 +392,4 @@ namespace vix::p2p
 
 } // namespace vix::p2p
 
-#endif // VIX_P2P_HPP
+#endif // VIX_P2P_P2P_HPP

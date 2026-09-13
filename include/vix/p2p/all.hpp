@@ -21,8 +21,8 @@
  *
  *  Vix.cpp
  */
-#ifndef VIX_P2P_P2P_HPP
-#define VIX_P2P_P2P_HPP
+#ifndef VIX_P2P_ALL_HPP
+#define VIX_P2P_ALL_HPP
 
 // Core
 #include <vix/p2p/Bootstrap.hpp>
@@ -55,4 +55,4 @@
 #include <vix/p2p/messages/WalAck.hpp>
 #include <vix/p2p/messages/WalPush.hpp>
 
-#endif // VIX_P2P_P2P_HPP
+#endif // VIX_P2P_ALL_HPP
