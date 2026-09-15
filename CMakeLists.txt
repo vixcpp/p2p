@@ -50,12 +50,7 @@ function(vix_p2p_link_asio onto link_scope)
   # -------------------------
   if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
     if (TARGET vix::thirdparty_asio)
-      get_target_property(_asio_inc vix::thirdparty_asio INTERFACE_INCLUDE_DIRECTORIES)
-      if (NOT _asio_inc)
-        message(FATAL_ERROR "[p2p] Umbrella build: vix::thirdparty_asio has no INTERFACE_INCLUDE_DIRECTORIES.")
-      endif()
-
-      target_include_directories(${onto} SYSTEM ${link_scope} ${_asio_inc})
+      target_link_libraries(${onto} ${link_scope} vix::thirdparty_asio)
       target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_ASIO=1)
       return()
     endif()
@@ -473,8 +468,8 @@ target_include_directories(vix_p2p
 
   # Required
   target_link_libraries(vix_p2p PUBLIC ${VIX_NET_TARGET})
-  vix_p2p_link_asio(vix_p2p PRIVATE)
-  vix_p2p_apply_asio_common(vix_p2p PRIVATE)
+  vix_p2p_link_asio(vix_p2p PUBLIC)
+  vix_p2p_apply_asio_common(vix_p2p PUBLIC)
 
   # Optional deps
   vix_p2p_try_link_utils(vix_p2p PUBLIC)
