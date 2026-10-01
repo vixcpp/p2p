@@ -15,7 +15,6 @@
 # Optional:
 #   - vix::sync  (AUTO|ON|OFF)  (default: AUTO)  (not used yet)
 #   - vix::cache (AUTO|ON|OFF)  (default: AUTO)
-#   - vix::utils (AUTO|ON|OFF)  (default: AUTO)
 #   - JSON backend (AUTO|ON|OFF) (default: AUTO)
 #   - OpenSSL (OFF by default)
 # ====================================================================
@@ -162,7 +161,6 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # --------------------------------------------------------------------
 if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
   set(VIX_P2P_FETCH_NET   OFF CACHE BOOL "Auto-fetch vix::net if missing" FORCE)
-  set(VIX_P2P_FETCH_UTILS OFF CACHE BOOL "Auto-fetch vix::utils if missing" FORCE)
   set(VIX_P2P_FETCH_SYNC  OFF CACHE BOOL "Auto-fetch vix::sync if missing" FORCE)
   set(VIX_P2P_FETCH_CACHE OFF CACHE BOOL "Auto-fetch vix::cache if missing" FORCE)
 endif()
@@ -198,66 +196,6 @@ else()
 endif()
 
 set(VIX_NET_TARGET vix::net)
-
-# Optional: Utils
-set(VIX_P2P_WITH_UTILS "AUTO" CACHE STRING "Link utils module (AUTO|ON|OFF)")
-set_property(CACHE VIX_P2P_WITH_UTILS PROPERTY STRINGS AUTO ON OFF)
-option(VIX_P2P_FETCH_UTILS "Auto-fetch vix::utils if missing (when required)" ON)
-
-function(vix_p2p_try_link_utils onto link_scope)
-  if (VIX_P2P_WITH_UTILS STREQUAL "OFF")
-    message(STATUS "[p2p] Utils disabled (OFF)")
-    target_compile_definitions(${onto} ${link_scope} VIX_P2P_NO_UTILS=1)
-    return()
-  endif()
-
-  # Umbrella mode: deps are owned by umbrella (no add_subdirectory / no FetchContent here)
-  if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
-    if (TARGET vix::utils)
-      message(STATUS "[p2p] Utils backend: vix::utils (umbrella)")
-      target_link_libraries(${onto} ${link_scope} vix::utils)
-      target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_UTILS=1)
-    else()
-      if (VIX_P2P_WITH_UTILS STREQUAL "ON")
-        message(FATAL_ERROR "Utils required but vix::utils not found (umbrella build).")
-      else()
-        message(STATUS "[p2p] Utils not detected; building without utils. (umbrella)")
-        target_compile_definitions(${onto} ${link_scope} VIX_P2P_NO_UTILS=1)
-      endif()
-    endif()
-    return()
-  endif()
-
-  # Standalone mode: may add sibling or FetchContent
-  if (NOT TARGET vix::utils)
-    if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/../utils/CMakeLists.txt")
-      message(STATUS "[p2p] Adding utils from umbrella: ../utils")
-      add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../utils" "utils")
-    elseif (VIX_P2P_FETCH_UTILS)
-      include(FetchContent)
-      message(STATUS "[p2p] Fetching vix::utils via FetchContent")
-      FetchContent_Declare(vix_utils
-        GIT_REPOSITORY https://github.com/vixcpp/utils.git
-        GIT_TAG        dev
-      )
-      FetchContent_MakeAvailable(vix_utils)
-    endif()
-  endif()
-
-  if (TARGET vix::utils)
-    message(STATUS "[p2p] Utils backend: vix::utils")
-    target_link_libraries(${onto} ${link_scope} vix::utils)
-    target_compile_definitions(${onto} ${link_scope} VIX_P2P_WITH_UTILS=1)
-  else()
-    if (VIX_P2P_WITH_UTILS STREQUAL "ON")
-      message(FATAL_ERROR "Utils required but vix::utils not found.")
-    else()
-      message(STATUS "[p2p] Utils not detected; building without utils.")
-      target_compile_definitions(${onto} ${link_scope} VIX_P2P_NO_UTILS=1)
-    endif()
-  endif()
-endfunction()
-
 
 # Optional: Sync
 set(VIX_P2P_WITH_SYNC "AUTO" CACHE STRING "Link sync module (AUTO|ON|OFF)")
@@ -472,7 +410,6 @@ target_include_directories(vix_p2p
   vix_p2p_apply_asio_common(vix_p2p PUBLIC)
 
   # Optional deps
-  vix_p2p_try_link_utils(vix_p2p PUBLIC)
   vix_p2p_try_link_sync(vix_p2p PUBLIC)
   vix_p2p_try_link_cache(vix_p2p PUBLIC)
   vix_p2p_try_link_json(vix_p2p PUBLIC)
@@ -520,7 +457,6 @@ else()
   vix_p2p_link_asio(vix_p2p INTERFACE)
   vix_p2p_apply_asio_common(vix_p2p INTERFACE)
 
-  vix_p2p_try_link_utils(vix_p2p INTERFACE)
   vix_p2p_try_link_sync(vix_p2p INTERFACE)
   vix_p2p_try_link_cache(vix_p2p INTERFACE)
   vix_p2p_try_link_json(vix_p2p INTERFACE)
@@ -554,7 +490,6 @@ if (P2P_SOURCES)
 else()
   message(STATUS "Mode: HEADER-ONLY / no sources")
 endif()
-message(STATUS "Utils policy:      ${VIX_P2P_WITH_UTILS}")
 message(STATUS "Sync policy:       ${VIX_P2P_WITH_SYNC}")
 message(STATUS "Cache policy:      ${VIX_P2P_WITH_CACHE}")
 message(STATUS "JSON policy:       ${VIX_P2P_WITH_JSON}")
