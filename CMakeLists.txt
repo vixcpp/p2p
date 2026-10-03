@@ -9,9 +9,6 @@
 # ====================================================================
 # Vix.cpp — P2P Module (Coreless / Modular)
 # ====================================================================
-# Required:
-#   - vix::net
-#
 # Optional:
 #   - vix::sync  (AUTO|ON|OFF)  (default: AUTO)  (not used yet)
 #   - vix::cache (AUTO|ON|OFF)  (default: AUTO)
@@ -160,42 +157,12 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # nor add sibling subdirectories.
 # --------------------------------------------------------------------
 if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
-  set(VIX_P2P_FETCH_NET   OFF CACHE BOOL "Auto-fetch vix::net if missing" FORCE)
   set(VIX_P2P_FETCH_SYNC  OFF CACHE BOOL "Auto-fetch vix::sync if missing" FORCE)
   set(VIX_P2P_FETCH_CACHE OFF CACHE BOOL "Auto-fetch vix::cache if missing" FORCE)
 endif()
 
 # Sources discovery
 file(GLOB_RECURSE P2P_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
-
-# Required: Net
-option(VIX_P2P_FETCH_NET "Auto-fetch vix::net if missing" ON)
-
-if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
-  # Umbrella owns dependency graph: never add_subdirectory/FetchContent here.
-  if (NOT TARGET vix::net)
-    message(FATAL_ERROR "[p2p] Umbrella build: vix::net must be provided by umbrella before p2p.")
-  endif()
-else()
-  if (NOT TARGET vix::net)
-    if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/../net/CMakeLists.txt")
-      message(STATUS "[p2p] Adding net from umbrella: ../net")
-      add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../net" "net")
-    elseif (VIX_P2P_FETCH_NET)
-      include(FetchContent)
-      message(STATUS "[p2p] Fetching vix::net via FetchContent")
-      FetchContent_Declare(vix_net
-        GIT_REPOSITORY https://github.com/vixcpp/net.git
-        GIT_TAG        v0.1.0
-      )
-      FetchContent_MakeAvailable(vix_net)
-    else()
-      message(FATAL_ERROR "vix::net not found. Provide it before p2p or enable VIX_P2P_FETCH_NET=ON.")
-    endif()
-  endif()
-endif()
-
-set(VIX_NET_TARGET vix::net)
 
 # Optional: Sync
 set(VIX_P2P_WITH_SYNC "AUTO" CACHE STRING "Link sync module (AUTO|ON|OFF)")
@@ -404,8 +371,6 @@ target_include_directories(vix_p2p
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-  # Required
-  target_link_libraries(vix_p2p PUBLIC ${VIX_NET_TARGET})
   vix_p2p_link_asio(vix_p2p PUBLIC)
   vix_p2p_apply_asio_common(vix_p2p PUBLIC)
 
@@ -453,7 +418,6 @@ else()
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-  target_link_libraries(vix_p2p INTERFACE ${VIX_NET_TARGET})
   vix_p2p_link_asio(vix_p2p INTERFACE)
   vix_p2p_apply_asio_common(vix_p2p INTERFACE)
 
@@ -494,7 +458,6 @@ message(STATUS "Sync policy:       ${VIX_P2P_WITH_SYNC}")
 message(STATUS "Cache policy:      ${VIX_P2P_WITH_CACHE}")
 message(STATUS "JSON policy:       ${VIX_P2P_WITH_JSON}")
 message(STATUS "SSL enabled:       ${VIX_P2P_WITH_SSL}")
-message(STATUS "Net target:        ${VIX_NET_TARGET}")
 message(STATUS "Include dir:       ${CMAKE_CURRENT_SOURCE_DIR}/include")
 message(STATUS "Sanitizers enabled:${VIX_ENABLE_SANITIZERS}")
 message(STATUS "Build type:        ${CMAKE_BUILD_TYPE}")
